@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "catedral-backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["src/api/server.js"],
+      "port": 3000
+    },
+    {
+      "name": "catedral-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "port": 5173
+    }
+  ]
+}

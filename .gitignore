@@ -1,0 +1,34 @@
+# Dependências
+node_modules/
+frontend/node_modules/
+frontend/dist/
+interface/node_modules/
+bot/node_modules/
+
+# Sessão autenticada do WhatsApp (NUNCA versionar — permite sequestro da conta)
+.wwebjs_auth/
+.wwebjs_cache/
+bot/.wwebjs_auth/
+bot/.wwebjs_cache/
+
+# Dados pessoais de motoristas e contatos
+*.xlsx
+*.xls
+*.vcf
+motoristas_sem_numero.xlsx
+
+# Estado de execução e dados de campanhas (contém dados pessoais e histórico real)
+campanhas.json
+progresso.json
+snapshots/
+logs/
+output/
+prints/
+
+# Config local (pode conter overrides específicos de máquina)
+config.override.json
+
+# Diversos
+*.log
+.DS_Store
+Thumbs.db

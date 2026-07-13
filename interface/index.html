@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catedral — Atualização de Números</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    background: linear-gradient(135deg, #E65C00, #FF8C42);
+    color: white;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 12px rgba(230,92,0,0.3);
+  }
+  header .logo { font-size: 32px; }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p  { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+
+  /* LAYOUT */
+  main {
+    max-width: 1100px;
+    margin: 32px auto;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* CARDS */
+  .card {
+    background: white;
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  }
+  .card h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card p.sub {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 20px;
+  }
+
+  /* STATS */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .stat {
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .stat .num  { font-size: 36px; font-weight: 800; }
+  .stat .lbl  { font-size: 12px; font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .stat.total { background: #E3F2FD; color: #1565C0; }
+  .stat.ok    { background: #E8F5E9; color: #2E7D32; }
+  .stat.warn  { background: #FFF3E0; color: #E65100; }
+  .stat.pend  { background: #FCE4EC; color: #C62828; }
+
+  /* DROP ZONE */
+  .dropzone {
+    border: 2.5px dashed #E65C00;
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: #FFF8F5;
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.over { background: #FFEEDD; border-color: #FF8C42; }
+  .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .dropzone .icon { font-size: 48px; }
+  .dropzone h3 { font-size: 18px; color: #E65C00; font-weight: 700; margin: 12px 0 6px; }
+  .dropzone p  { font-size: 13px; color: #999; }
+
+  /* FORMATO ESPERADO */
+  .format-box {
+    background: #F9FAFB;
+    border: 1px solid #E0E0E0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: #555;
+  }
+  .format-box code {
+    display: block;
+    background: #1E1E1E;
+    color: #4EC9B0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  /* PREVIEW TABLE */
+  .preview-wrap {
+    display: none;
+    overflow-x: auto;
+    margin-top: 16px;
+    border-radius: 10px;
+    border: 1px solid #E0E0E0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead tr { background: #E65C00; color: white; }
+  thead th { padding: 12px 16px; text-align: left; font-weight: 600; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #FFF8F5; }
+  tbody tr:hover { background: #FFEEDD; }
+  tbody td { padding: 10px 16px; color: #333; border-bottom: 1px solid #F0F0F0; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge.ok   { background: #E8F5E9; color: #2E7D32; }
+  .badge.warn { background: #FFF3E0; color: #E65100; }
+  .badge.err  { background: #FCE4EC; color: #C62828; }
+
+  /* BOTÕES */
+  .actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    padding: 12px 24px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all .2s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary  { background: #E65C00; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #CC5200; transform: translateY(-1px); }
+  .btn-success  { background: #4CAF50; color: white; }
+  .btn-success:hover:not(:disabled) { background: #388E3C; transform: translateY(-1px); }
+  .btn-outline  { background: white; color: #E65C00; border: 2px solid #E65C00; }
+  .btn-outline:hover { background: #FFF8F5; }
+
+  /* RESULTADO */
+  .result-box {
+    display: none;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    border-left: 5px solid #4CAF50;
+    background: #E8F5E9;
+    color: #2E7D32;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .result-box.error { border-color: #F44336; background: #FFEBEE; color: #C62828; }
+
+  /* PROGRESS */
+  .progress-bar {
+    display: none;
+    height: 8px;
+    background: #F0F0F0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 16px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #E65C00, #FF8C42);
+    border-radius: 4px;
+    transition: width .3s;
+  }
+
+  /* INSTRUCOES */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 4px;
+  }
+  .step {
+    background: #FFF8F5;
+    border: 1px solid #FFD4B5;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .step .num-circle {
+    width: 36px; height: 36px;
+    background: #E65C00;
+    color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px;
+    margin: 0 auto 10px;
+  }
+  .step h4 { font-size: 14px; color: #333; font-weight: 700; margin-bottom: 6px; }
+  .step p  { font-size: 12px; color: #888; line-height: 1.5; }
+
+  @media (max-width: 700px) {
+    .stats { grid-template-columns: repeat(2,1fr); }
+    .steps  { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🚌</div>
+  <div>
+    <h1>VIAÇÃO CATEDRAL — Atualização de Números</h1>
+    <p>Importe a planilha preenchida para adicionar celulares dos motoristas sem contato</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- STATS -->
+  <div class="card">
+    <h2>📊 Situação Atual</h2>
+    <p class="sub">Baseado no arquivo progresso.json gerado pelo bot</p>
+    <div class="stats">
+      <div class="stat total"><div class="num" id="s-total">—</div><div class="lbl">Total</div></div>
+      <div class="stat ok">  <div class="num" id="s-env">—</div>  <div class="lbl">Enviados</div></div>
+      <div class="stat warn"><div class="num" id="s-sem">—</div>  <div class="lbl">Sem Número</div></div>
+      <div class="stat pend"><div class="num" id="s-pend">—</div> <div class="lbl">Pendentes</div></div>
+    </div>
+  </div>
+
+  <!-- COMO USAR -->
+  <div class="card">
+    <h2>📋 Como usar</h2>
+    <p class="sub">Siga os 3 passos para adicionar os números que foram coletados</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num-circle">1</div>
+        <h4>Abra a planilha</h4>
+        <p>Abra o arquivo <strong>motoristas_sem_numero.xlsx</strong> e preencha a coluna "Celular" com os números coletados</p>
+      </div>
+      <div class="step">
+        <div class="num-circle">2</div>
+        <h4>Salve como CSV</h4>
+        <p>No Excel: <strong>Arquivo → Salvar como → CSV UTF-8</strong> ou arraste o .xlsx direto aqui</p>
+      </div>
+      <div class="step">
+        <div class="num-circle">3</div>
+        <h4>Importe aqui</h4>
+        <p>Arraste o arquivo na área abaixo, confira a prévia e clique em <strong>Atualizar Lista</strong></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="card">
+    <h2>📁 Importar Arquivo</h2>
+    <p class="sub">Arraste o arquivo CSV ou XLSX com os números coletados</p>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+      <div class="icon">📂</div>
+      <h3>Arraste o arquivo aqui</h3>
+      <p>ou clique para selecionar — aceita .csv ou .xlsx</p>
+    </div>
+
+    <div class="format-box">
+      <strong>Formato esperado (colunas obrigatórias):</strong>
+      <code>Matrícula | Nome | Celular (preencher)<br>5694 | ADAILSON BISPO | 16991234567<br>5197 | ADAILTON CAMARGO | 35998765432</code>
+    </div>
+
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="preview-wrap" id="previewWrap">
+      <table id="previewTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Matrícula</th>
+            <th>Nome</th>
+            <th>Celular informado</th>
+            <th>Celular formatado</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+
+    <div class="result-box" id="resultBox"></div>
+
+    <div class="actions">
+      <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">📂 Selecionar arquivo</button>
+      <button class="btn btn-primary" id="btnPreview" disabled onclick="processarArquivo()">👁️ Ver prévia</button>
+      <button class="btn btn-success" id="btnAtualizar" disabled onclick="atualizarLista()">✅ Atualizar Lista</button>
+      <button class="btn btn-outline" onclick="baixarPlanilha()">⬇️ Baixar planilha modelo</button>
+    </div>
+  </div>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let dadosLidos = [];
+let arquivoAtual = null;
+
+// ─── DRAG & DROP ─────────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) carregarArquivo(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) carregarArquivo(fileInput.files[0]);
+});
+
+// ─── CARREGAR STATS ──────────────────────────────────────────────
+async function carregarStats() {
+  try {
+    const resp = await fetch('/api/stats');
+    if (!resp.ok) return;
+    const d = await resp.json();
+    document.getElementById('s-total').textContent = d.total ?? '—';
+    document.getElementById('s-env').textContent   = d.enviados ?? '—';
+    document.getElementById('s-sem').textContent   = d.semNumero ?? '—';
+    document.getElementById('s-pend').textContent  = d.pendentes ?? '—';
+  } catch(e) {}
+}
+carregarStats();
+
+// ─── FORMATAR NÚMERO ─────────────────────────────────────────────
+function formatarCelular(raw) {
+  if (!raw) return null;
+  let n = String(raw).replace(/\D/g, '');
+  if (!n) return null;
+  // remove casas decimais do Excel
+  n = String(Math.round(Number(n))).replace(/\D/g, '');
+  if (n.length === 10 || n.length === 11) n = '55' + n;
+  if (n.length < 12 || n.length > 13) return null;
+  return n;
+}
+
+// ─── CARREGAR ARQUIVO ────────────────────────────────────────────
+function carregarArquivo(file) {
+  arquivoAtual = file;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  mostrarProgresso(30);
+
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      // Lê tudo como array bruto para achar o header mesmo com linhas de título
+      const todasLinhas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      mostrarProgresso(80);
+
+      // Procura a linha que contém "Matrícula" (ignora títulos decorativos)
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(todasLinhas.length, 10); i++) {
+        if (todasLinhas[i].some(c => /matr/i.test(String(c)))) {
+          headerIdx = i;
+          break;
+        }
+      }
+
+      if (headerIdx === -1) {
+        mostrarErro('Não encontrei as colunas de Matrícula e Nome. Verifique o arquivo.');
+        return;
+      }
+
+      const headerRow  = todasLinhas[headerIdx];
+      const idxMat = headerRow.findIndex(c => /matr/i.test(String(c)));
+      const idxNom = headerRow.findIndex(c => /nome/i.test(String(c)) && !/cracha/i.test(String(c)));
+      const idxCel = headerRow.findIndex(c => /celular|telefone|fone|whats/i.test(String(c)));
+
+      if (idxMat === -1 || idxNom === -1) {
+        mostrarErro('Não encontrei as colunas de Matrícula e Nome. Verifique o arquivo.');
+        return;
+      }
+
+      dadosLidos = todasLinhas.slice(headerIdx + 1)
+        .filter(r => r[idxMat] || r[idxNom])
+        .map(r => ({
+          matricula: String(r[idxMat] || '').trim(),
+          nome:      String(r[idxNom] || '').trim(),
+          celularRaw: idxCel >= 0 ? r[idxCel] : '',
+          celular:    formatarCelular(idxCel >= 0 ? r[idxCel] : '')
+        }));
+
+      mostrarProgresso(100);
+      setTimeout(() => {
+        document.getElementById('progressBar').style.display = 'none';
+        renderizarPreview();
+        document.getElementById('btnPreview').disabled = false;
+        document.getElementById('btnAtualizar').disabled = dadosLidos.filter(d => d.celular).length === 0;
+      }, 400);
+
+    } catch(err) {
+      mostrarErro('Erro ao ler o arquivo: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+
+  // Atualiza nome no dropzone
+  dropzone.querySelector('h3').textContent = '✅ ' + file.name;
+  dropzone.querySelector('p').textContent = 'Arquivo carregado — clique em "Ver prévia"';
+}
+
+// ─── PREVIEW ─────────────────────────────────────────────────────
+function processarArquivo() { renderizarPreview(); }
+
+function renderizarPreview() {
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+
+  const comCelular   = dadosLidos.filter(d => d.celular);
+  const semCelular   = dadosLidos.filter(d => !d.celular && d.celularRaw);
+  const semNenhum    = dadosLidos.filter(d => !d.celular && !d.celularRaw);
+
+  dadosLidos.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    let badge, status;
+
+    if (d.celular) {
+      badge = '<span class="badge ok">✓ Válido</span>';
+      status = 'ok';
+    } else if (d.celularRaw) {
+      badge = '<span class="badge err">✗ Inválido</span>';
+      status = 'err';
+    } else {
+      badge = '<span class="badge warn">— Vazio</span>';
+      status = 'warn';
+    }
+
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td><strong>${d.matricula}</strong></td>
+      <td>${d.nome}</td>
+      <td>${d.celularRaw || '—'}</td>
+      <td>${d.celular ? '+' + d.celular : '—'}</td>
+      <td>${badge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('previewWrap').style.display = 'block';
+
+  const resultBox = document.getElementById('resultBox');
+  resultBox.style.display = 'block';
+  resultBox.className = 'result-box';
+  resultBox.innerHTML = `
+    <strong>📊 Resumo do arquivo:</strong><br>
+    ✅ <strong>${comCelular.length}</strong> motoristas com número válido — serão atualizados<br>
+    ⚠️ <strong>${semCelular.length}</strong> com número inválido (verificar)<br>
+    ➖ <strong>${semNenhum.length}</strong> ainda sem número<br><br>
+    ${comCelular.length > 0 ? '👉 Clique em <strong>"Atualizar Lista"</strong> para aplicar.' : '⚠️ Nenhum número válido encontrado para atualizar.'}
+  `;
+}
+
+// ─── ATUALIZAR LISTA ─────────────────────────────────────────────
+async function atualizarLista() {
+  const payload = dadosLidos.filter(d => d.celular);
+  if (payload.length === 0) return;
+
+  document.getElementById('btnAtualizar').disabled = true;
+
+  try {
+    const resp = await fetch('/api/atualizar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motoristas: payload })
+    });
+
+    const data = await resp.json();
+    const resultBox = document.getElementById('resultBox');
+
+    if (data.ok) {
+      resultBox.className = 'result-box';
+      resultBox.innerHTML = `
+        <strong>🎉 Lista atualizada com sucesso!</strong><br>
+        ✅ <strong>${data.atualizados}</strong> motoristas tiveram o número adicionado<br>
+        ➖ <strong>${data.naoEncontrados}</strong> matrículas não encontradas na lista principal<br><br>
+        O bot já vai incluir esses motoristas no próximo envio!
+      `;
+      carregarStats();
+    } else {
+      resultBox.className = 'result-box error';
+      resultBox.innerHTML = '❌ Erro ao atualizar: ' + (data.erro || 'Erro desconhecido');
+    }
+  } catch(e) {
+    const resultBox = document.getElementById('resultBox');
+    resultBox.className = 'result-box error';
+    resultBox.innerHTML = '❌ Erro de conexão com o servidor: ' + e.message;
+    document.getElementById('btnAtualizar').disabled = false;
+  }
+}
+
+// ─── BAIXAR MODELO ───────────────────────────────────────────────
+function baixarPlanilha() {
+  window.location.href = '/baixar-modelo';
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────
+function mostrarProgresso(pct) {
+  document.getElementById('progressBar').style.display = 'block';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function mostrarErro(msg) {
+  document.getElementById('progressBar').style.display = 'none';
+  const r = document.getElementById('resultBox');
+  r.style.display = 'block';
+  r.className = 'result-box error';
+  r.textContent = '❌ ' + msg;
+}
+</script>
+</body>
+</html>
