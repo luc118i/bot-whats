@@ -6,7 +6,9 @@ Plataforma de disparo em massa via WhatsApp para a Viação Catedral, com dashbo
 
 ## Objetivo
 
-Permitir a criação de campanhas de comunicação com motoristas: definir 5 variações de mensagem personalizada (nome e matrícula), imagem opcional, filtro de público-alvo (base operacional, status de envio) e agendamento — tudo pelo dashboard, sem editar código. O bot então envia via WhatsApp Web, registra o progresso por campanha, tira prints de confirmação e gera relatório PDF.
+Permitir a criação e edição de campanhas de comunicação com motoristas: definir 5 variações de mensagem personalizada (nome e matrícula), imagem opcional, filtro de público-alvo (base operacional, status de envio), delay entre envios e agendamento — tudo pelo dashboard, sem editar código. O bot então envia via WhatsApp Web, registra o progresso por campanha, tira prints de confirmação e gera relatório PDF.
+
+Cada mensagem enviada combina: o modelo da campanha (ou um dos 5 modelos padrão do sistema) + um CTA + um rodapé, sorteados de pools de 5 variações cada (configuráveis em "Configurações"), para reduzir padrões repetitivos de envio em massa.
 
 ---
 
@@ -53,7 +55,7 @@ npm run dev        # backend/API na porta 3000
 cd frontend && npm run dev   # dashboard na porta 5173
 ```
 
-Pelo dashboard: criar campanha (nome, modelos de mensagem, imagem, filtros de público, agendamento), iniciar, pausar, retomar, cancelar e acompanhar estatísticas em tempo real.
+Pelo dashboard: criar, **editar** (a qualquer momento, em qualquer status), duplicar, iniciar, pausar, retomar, cancelar campanhas e acompanhar estatísticas em tempo real. Editar reabre o mesmo wizard pré-preenchido com os dados atuais da campanha.
 
 ### Envio via linha de comando (sem dashboard)
 
@@ -62,7 +64,7 @@ npm run send        # 1 conta
 npm run send:dual    # 2 contas em paralelo
 ```
 
-Um navegador abrirá por conta. Escaneie o QR Code com o WhatsApp para autenticar. Se houver uma campanha ativa no dashboard, o envio usa os modelos de mensagem, imagem e filtros configurados nela; caso contrário, usa o padrão do sistema.
+Um navegador abrirá por conta **apenas na primeira vez** (para escanear o QR Code) — depois que a sessão é salva em `.wwebjs_auth/`, as próximas execuções rodam com o Chromium oculto (headless) automaticamente. Se houver uma campanha ativa no dashboard, o envio usa os modelos de mensagem, imagem, delay e filtros configurados nela; caso contrário, usa o padrão do sistema.
 
 ### Retirar prints pendentes
 
@@ -111,12 +113,14 @@ INFORMATIVO DE TEMPO DE PARADA/
 
 ## Fluxo Geral de uma Campanha
 
-1. Criação pelo dashboard: nome, 5 modelos de mensagem, imagem opcional, filtros de público (base operacional / status) e agendamento.
-2. Ao iniciar, o progresso é isolado — nenhum estado de campanhas anteriores é herdado.
-3. `send.js` lê a campanha ativa, filtra motoristas pelo público-alvo configurado, monta a mensagem a partir dos modelos da campanha (ou do padrão do sistema, se nenhum foi definido) e envia.
+1. Criação (ou edição, a qualquer momento) pelo dashboard: nome, 5 modelos de mensagem, imagem opcional, filtros de público (base operacional / status), delay entre envios e agendamento.
+2. Ao iniciar, o progresso é isolado — nenhum estado de campanhas anteriores é herdado (qualquer resíduo é arquivado antes do reset).
+3. `send.js` lê a campanha ativa, filtra motoristas pelo público-alvo configurado, monta a mensagem a partir dos modelos da campanha + CTA + rodapé (ou do padrão do sistema, se nenhum modelo foi definido) e envia, respeitando o delay configurado na campanha (ou o padrão global, se não definido).
 4. Cada envio: marca `PROCESSANDO` → verifica WhatsApp → envia imagem + legenda → tira print → marca `ENVIADO`.
 5. Pausas automáticas para reduzir risco de bloqueio (a cada N envios / após M envios, um "respiro" maior).
 6. Ao finalizar ou cancelar, o progresso é arquivado em `snapshots/{id}.json` e o relatório PDF é gerado.
+
+> ⚠️ Mesmo com essas precauções, `whatsapp-web.js` é automação não-oficial — o número pode ser suspenso pelo WhatsApp a qualquer momento, independente da configuração de delay. Para uso recorrente em produção, considere migrar para a [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) oficial.
 
 ---
 
