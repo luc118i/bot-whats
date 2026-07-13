@@ -166,8 +166,16 @@ async function main() {
   }
   const media = MessageMedia.fromFilePath(imagemPath);
 
+  // Delay entre envios: usa o configurado na campanha (em segundos) se houver, senão o padrão global
+  const delayConfig = (campanhaAtiva?.config?.delayMin && campanhaAtiva?.config?.delayMax)
+    ? { delayMin: campanhaAtiva.config.delayMin * 1000, delayMax: campanhaAtiva.config.delayMax * 1000 }
+    : undefined;
+  if (delayConfig) {
+    console.log(`⏱️  Usando delay customizado da campanha: ${campanhaAtiva.config.delayMin}s–${campanhaAtiva.config.delayMax}s`);
+  }
+
   // Roda as contas em paralelo
-  await Promise.all(listas.map((lista, i) => rodarConta(i + 1, lista, media, modelosCampanha)));
+  await Promise.all(listas.map((lista, i) => rodarConta(i + 1, lista, media, modelosCampanha, delayConfig)));
 
   // Relatório unificado
   console.log('\n═══════════════════════════════════════════════');

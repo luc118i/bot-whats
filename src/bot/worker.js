@@ -9,7 +9,7 @@ const { criarCliente } = require('./client');
 const { montarMensagem, montarMensagemCampanha } = require('../utils/message');
 const config = require('../config');
 
-const { delayMin, delayMax, pausaACada, pausaLonga, respiroCada, respiroDuracao } = config.bot;
+const { pausaACada, pausaLonga, respiroCada, respiroDuracao } = config.bot;
 
 /**
  * Executa o fluxo completo de envio para uma única conta WhatsApp.
@@ -24,10 +24,14 @@ const { delayMin, delayMax, pausaACada, pausaLonga, respiroCada, respiroDuracao 
  * @param {import('whatsapp-web.js').MessageMedia} media - Objeto de mídia (imagem) a enviar.
  * @param {string[]} [modelosCampanha] - Modelos de mensagem customizados da campanha ativa.
  *   Se vazio/ausente, usa os modelos padrão do sistema.
+ * @param {{delayMin: number, delayMax: number}} [delayConfig] - Delay em ms a usar entre
+ *   envios. Se ausente, usa o padrão global (config.bot.delayMin/delayMax).
  * @returns {Promise<Array<{nome: string, matricula: string, celular: string, conta: number, status: string, print: string|null, erro: string|null}>>}
  *   Lista de resultados individuais de cada envio desta conta.
  */
-async function rodarConta(contaId, lista, media, modelosCampanha) {
+async function rodarConta(contaId, lista, media, modelosCampanha, delayConfig) {
+  const delayMin = delayConfig?.delayMin ?? config.bot.delayMin;
+  const delayMax = delayConfig?.delayMax ?? config.bot.delayMax;
   const prefixo = `[CONTA ${contaId}]`;
 
   return new Promise((resolve) => {
