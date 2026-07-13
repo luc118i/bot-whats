@@ -2,14 +2,10 @@
 node_modules/
 frontend/node_modules/
 frontend/dist/
-interface/node_modules/
-bot/node_modules/
 
 # Sessão autenticada do WhatsApp (NUNCA versionar — permite sequestro da conta)
 .wwebjs_auth/
 .wwebjs_cache/
-bot/.wwebjs_auth/
-bot/.wwebjs_cache/
 
 # Dados pessoais de motoristas e contatos
 *.xlsx
@@ -24,6 +20,7 @@ snapshots/
 logs/
 output/
 prints/
+campanhas_imagens/
 
 # Config local (pode conter overrides específicos de máquina)
 config.override.json

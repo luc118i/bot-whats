@@ -1,12 +1,12 @@
-# Catedral Bot — Informativo de Tempo de Parada
+# Catedral Bot — Painel de Campanhas WhatsApp
 
-Bot WhatsApp para envio em massa do informativo de regras de parada para refeição aos motoristas da Viação Catedral, com interface web para atualização de números.
+Plataforma de disparo em massa via WhatsApp para a Viação Catedral, com dashboard web para criar, configurar e acompanhar **campanhas** (não apenas o informativo de tempo de parada — qualquer campanha com mensagem, imagem e público-alvo próprios).
 
 ---
 
 ## Objetivo
 
-Enviar automaticamente uma imagem informativa + mensagem personalizada (nome e matrícula) para cada motorista ativo cadastrado na planilha, registrando o progresso e gerando um relatório PDF de confirmação com prints dos chats.
+Permitir a criação de campanhas de comunicação com motoristas: definir 5 variações de mensagem personalizada (nome e matrícula), imagem opcional, filtro de público-alvo (base operacional, status de envio) e agendamento — tudo pelo dashboard, sem editar código. O bot então envia via WhatsApp Web, registra o progresso por campanha, tira prints de confirmação e gera relatório PDF.
 
 ---
 
@@ -14,9 +14,9 @@ Enviar automaticamente uma imagem informativa + mensagem personalizada (nome e m
 
 | Tecnologia | Uso |
 |---|---|
-| Node.js | Runtime principal |
+| Node.js | Runtime principal (backend + bot) |
 | whatsapp-web.js | Automação do WhatsApp via Puppeteer |
-| Puppeteer | Controle do navegador (incluso no whatsapp-web.js) |
+| React + Vite + TypeScript | Dashboard web (`frontend/`) |
 | xlsx | Leitura e escrita de planilhas Excel |
 | pdfkit | Geração do relatório PDF |
 | qrcode-terminal | Exibição do QR Code no terminal |
@@ -27,45 +27,42 @@ Enviar automaticamente uma imagem informativa + mensagem personalizada (nome e m
 
 - Node.js >= 18
 - Google Chrome ou Chromium instalado (usado pelo Puppeteer)
-- Arquivo `informativo.png` na raiz do projeto
-- Arquivo `Pessoa - 30-06-2026 10-07.xlsx` na raiz do projeto (planilha de motoristas)
+- Arquivo `informativo.png` na raiz do projeto (imagem padrão, usada quando a campanha não define uma própria)
+- Planilha de motoristas na raiz do projeto (caminho configurado em `src/config/index.js`)
 
 ---
 
 ## Instalação
 
 ```bash
-# Na raiz do projeto (onde está este README)
+# Backend (raiz do projeto)
 npm install
+
+# Dashboard web
+cd frontend && npm install
 ```
 
 ---
 
 ## Como Executar
 
-### Envio principal (1 conta)
+### Dashboard web (criar e gerenciar campanhas)
 
 ```bash
-npm run send
+npm run dev        # backend/API na porta 3000
+cd frontend && npm run dev   # dashboard na porta 5173
 ```
 
-Um navegador abrirá. Escaneie o QR Code com seu WhatsApp para autenticar.
+Pelo dashboard: criar campanha (nome, modelos de mensagem, imagem, filtros de público, agendamento), iniciar, pausar, retomar, cancelar e acompanhar estatísticas em tempo real.
 
-### Envio com 2 contas em paralelo
+### Envio via linha de comando (sem dashboard)
 
 ```bash
-npm run send:dual
+npm run send        # 1 conta
+npm run send:dual    # 2 contas em paralelo
 ```
 
-Dois navegadores abrirão. Escaneie cada QR Code com uma conta diferente para dobrar a velocidade de envio.
-
-### Interface web (atualizar números)
-
-```bash
-npm run web
-```
-
-Acesse `http://localhost:3000` no navegador. Permite importar uma planilha com novos números de motoristas sem contato e atualizar a planilha principal.
+Um navegador abrirá por conta. Escaneie o QR Code com o WhatsApp para autenticar. Se houver uma campanha ativa no dashboard, o envio usa os modelos de mensagem, imagem e filtros configurados nela; caso contrário, usa o padrão do sistema.
 
 ### Retirar prints pendentes
 
@@ -73,22 +70,10 @@ Acesse `http://localhost:3000` no navegador. Permite importar uma planilha com n
 npm run retake
 ```
 
-Para motoristas marcados como ENVIADO mas sem screenshot de confirmação, conecta ao WhatsApp e tira os prints dos chats.
-
 ### Gerar arquivo de contatos VCF
 
 ```bash
 npm run contacts
-```
-
-Gera um arquivo `.vcf` em `output/contatos/` com todos os motoristas ativos que possuem número cadastrado. Pode ser importado em massa no celular para o WhatsApp reconhecer os nomes.
-
-### Verificação de sintaxe (sem executar)
-
-```bash
-node --check src/config/index.js
-node --check src/bot/worker.js
-node --check scripts/send.js
 ```
 
 ---
@@ -98,80 +83,43 @@ node --check scripts/send.js
 ```
 INFORMATIVO DE TEMPO DE PARADA/
 ├── src/
-│   ├── config/index.js          ← Todas as constantes e caminhos centralizados
-│   ├── bot/
-│   │   ├── client.js            ← Fábrica do cliente WhatsApp (LocalAuth)
-│   │   ├── screenshot.js        ← Captura de tela do painel de chat
-│   │   ├── sender.js            ← Verificação de número + envio de mensagem
-│   │   └── worker.js            ← Loop completo de uma conta WhatsApp
-│   ├── services/
-│   │   ├── progressService.js   ← Leitura/escrita atômica do progresso.json
-│   │   ├── reportService.js     ← Geração de PDF com pdfkit
-│   │   └── spreadsheetService.js← Leitura/escrita da planilha xlsx
-│   ├── utils/
-│   │   ├── delay.js             ← sleep, aleatorio, delayAleatorio, microPausa
-│   │   ├── message.js           ← Texto do informativo WhatsApp
-│   │   └── phone.js             ← Normalização e formatação de números
+│   ├── config/index.js          ← Constantes e caminhos centralizados
+│   ├── bot/                      ← Cliente WhatsApp, envio, print, worker
+│   ├── services/                 ← Campanhas, progresso, planilha, templates, relatório
+│   ├── utils/                    ← delay, mensagem (padrão + customizada por campanha), telefone
 │   └── api/
-│       ├── server.js            ← Servidor HTTP na porta 3000
-│       └── routes/
-│           ├── stats.js         ← GET /api/stats
-│           ├── update.js        ← POST /api/atualizar
-│           └── download.js      ← GET /baixar-modelo
-├── web/
-│   └── index.html               ← Interface web (SPA, sem framework)
+│       ├── server.js             ← Servidor HTTP (porta 3000)
+│       └── routes/               ← campanhas, contatos, config, contas, stats, etc.
+├── frontend/                     ← Dashboard React (Vite + TypeScript)
+├── web/                          ← Interface estática legada (servida por src/api/server.js)
 ├── scripts/
-│   ├── send.js                  ← Ponto de entrada do bot de envio
-│   ├── retakeScreenshots.js     ← Retirar prints de envios sem screenshot
-│   └── generateContacts.js     ← Gerar VCF de contatos
-├── docs/
-│   ├── ARCHITECTURE.md          ← Diagramas Mermaid da arquitetura
-│   ├── API.md                   ← Documentação das rotas HTTP
-│   └── CHANGELOG-REFATORACAO.md ← Histórico de mudanças arquiteturais
-├── output/
-│   ├── prints/                  ← Screenshots de confirmação de envio (gerados)
-│   ├── relatorio/               ← PDFs de relatório (gerados)
-│   └── contatos/                ← Arquivos VCF (gerados)
-├── bot/                         ← Código legado (mantido para referência)
-├── interface/                   ← Interface legada (mantida para referência)
-├── Pessoa - 30-06-2026 10-07.xlsx   ← Planilha principal de motoristas
-├── informativo.png              ← Imagem enviada aos motoristas
-├── progresso.json               ← Estado de envio (gerado automaticamente)
-├── package.json
-├── .eslintrc.js
-├── .prettierrc
-├── .editorconfig
-└── README.md
+│   ├── send.js                   ← Ponto de entrada do bot de envio
+│   ├── retakeScreenshots.js
+│   └── generateContacts.js
+├── docs/                         ← Diagramas de arquitetura e changelog
+├── output/                       ← prints/, relatorio/, contatos/ (gerados, não versionados)
+├── campanhas_imagens/            ← Imagens customizadas por campanha (geradas, não versionadas)
+├── snapshots/                    ← Snapshot do progresso ao finalizar/cancelar cada campanha
+├── campanhas.json                ← Estado das campanhas (gerado, não versionado)
+├── progresso.json                ← Estado de envio da campanha ativa (gerado, não versionado)
+└── package.json
 ```
 
----
-
-## Fluxo Geral da Aplicação
-
-1. `npm run send` lê a planilha e filtra motoristas ativos
-2. Motoristas desligados (por data ou base "DESLIGADOS") são ignorados
-3. Motoristas sem número são registrados no `progresso.json` como `SEM_NUMERO`
-4. Números duplicados são marcados como `DUPLICADO` (só o primeiro é enviado)
-5. Pendentes são divididos entre as contas disponíveis (1 ou 2)
-6. Cada conta abre um navegador, aguarda QR Code e começa a enviar
-7. Cada envio: marca `PROCESSANDO` → verifica WhatsApp → envia imagem → tira print → marca `ENVIADO`
-8. A cada 20 envios bem-sucedidos, pausa de 5 minutos para evitar bloqueios
-9. Entre envios, delay aleatório de 1 a 50 segundos
-10. Ao final, gera relatório PDF em `output/relatorio/`
+> Arquivos com dados pessoais (planilha de motoristas, `.vcf`), estado de execução (`campanhas.json`, `progresso.json`, `snapshots/`, `output/`) e a sessão autenticada do WhatsApp (`.wwebjs_auth/`) ficam fora do controle de versão — veja `.gitignore`.
 
 ---
 
-## Variáveis de Ambiente
+## Fluxo Geral de uma Campanha
 
-O projeto não usa variáveis de ambiente. Todas as configurações ficam em `src/config/index.js`.
-
-Para alterar comportamentos como delay, limite por conta ou porta do servidor, edite esse arquivo diretamente.
+1. Criação pelo dashboard: nome, 5 modelos de mensagem, imagem opcional, filtros de público (base operacional / status) e agendamento.
+2. Ao iniciar, o progresso é isolado — nenhum estado de campanhas anteriores é herdado.
+3. `send.js` lê a campanha ativa, filtra motoristas pelo público-alvo configurado, monta a mensagem a partir dos modelos da campanha (ou do padrão do sistema, se nenhum foi definido) e envia.
+4. Cada envio: marca `PROCESSANDO` → verifica WhatsApp → envia imagem + legenda → tira print → marca `ENVIADO`.
+5. Pausas automáticas para reduzir risco de bloqueio (a cada N envios / após M envios, um "respiro" maior).
+6. Ao finalizar ou cancelar, o progresso é arquivado em `snapshots/{id}.json` e o relatório PDF é gerado.
 
 ---
 
 ## Arquitetura Detalhada
 
-Consulte `docs/ARCHITECTURE.md` para diagramas Mermaid de:
-- Arquitetura geral (módulos e dependências)
-- Fluxo do bot (flowchart completo)
-- Fluxo da interface web (sequence diagram)
+Consulte `docs/ARCHITECTURE.md` para diagramas Mermaid da arquitetura geral e do fluxo do bot.

@@ -6,8 +6,29 @@ const path = require('path');
 const ROOT          = path.join(__dirname, '..', '..');
 const FILE          = path.join(ROOT, 'campanhas.json');
 const SNAPSHOTS_DIR = path.join(ROOT, 'snapshots');
+const IMAGENS_DIR   = path.join(ROOT, 'campanhas_imagens');
 
 const PROGRESSO_FILE = path.join(ROOT, 'progresso.json');
+
+// Decodifica uma data URI (base64) enviada pelo wizard e salva como arquivo,
+// para o send.js poder usar essa imagem no lugar da imagem padrão do sistema.
+function salvarImagemCampanha(id, dataUri) {
+  const match = /^data:(image\/\w+);base64,(.+)$/.exec(dataUri || '');
+  if (!match) return null;
+  const ext = match[1].split('/')[1].replace('jpeg', 'jpg');
+  if (!fs.existsSync(IMAGENS_DIR)) fs.mkdirSync(IMAGENS_DIR, { recursive: true });
+  const destino = path.join(IMAGENS_DIR, `${id}.${ext}`);
+  fs.writeFileSync(destino, Buffer.from(match[2], 'base64'));
+  return destino;
+}
+
+function copiarImagemCampanha(origem, novoId) {
+  if (!origem || !fs.existsSync(origem)) return null;
+  if (!fs.existsSync(IMAGENS_DIR)) fs.mkdirSync(IMAGENS_DIR, { recursive: true });
+  const destino = path.join(IMAGENS_DIR, `${novoId}${path.extname(origem)}`);
+  fs.copyFileSync(origem, destino);
+  return destino;
+}
 
 function salvarSnapshot(id) {
   if (!fs.existsSync(PROGRESSO_FILE)) return;
@@ -69,9 +90,12 @@ function criar(dados) {
       delayMin:       dados.config?.delayMin       ?? 20000,
       delayMax:       dados.config?.delayMax       ?? 45000,
     },
+    modelos:      Array.isArray(dados.modelos) ? dados.modelos.filter(t => t && t.trim()) : [],
+    imagem:       null,
     stats: { total: 0, enviados: 0, pendentes: 0, falhas: 0, duracaoSegundos: 0 },
     eventos: [{ tipo: 'criacao', em: agora, msg: 'Campanha criada.' }],
   };
+  if (dados.imagemBase64) nova.imagem = salvarImagemCampanha(nova.id, dados.imagemBase64);
   lista.push(nova);
   salvar(lista);
   return nova;
@@ -90,6 +114,10 @@ function atualizar(id, dados) {
 }
 
 function deletar(id) {
+  const c = buscar(id);
+  if (c?.imagem && fs.existsSync(c.imagem)) {
+    try { fs.unlinkSync(c.imagem); } catch (_) {}
+  }
   salvar(ler().filter(c => c.id !== id));
   return { ok: true };
 }
@@ -155,12 +183,18 @@ function finalizar(id, stats) {
 function duplicar(id) {
   const original = buscar(id);
   if (!original) return null;
-  return criar({
+  const copia = criar({
     nome:        `${original.nome} (cópia)`,
     descricao:   original.descricao,
     responsavel: original.responsavel,
     config:      { ...original.config },
+    modelos:     original.modelos,
   });
+  if (original.imagem) {
+    const novaImagem = copiarImagemCampanha(original.imagem, copia.id);
+    if (novaImagem) atualizar(copia.id, { imagem: novaImagem });
+  }
+  return buscar(copia.id);
 }
 
 // ─── Métricas ─────────────────────────────────────────────────────────────────

@@ -95,4 +95,21 @@ function montarMensagem(nome, matricula) {
   return `${modelo(nome, matricula, cta)}\n\n${rodape}`;
 }
 
-module.exports = { montarMensagem };
+/**
+ * Monta a mensagem a partir dos modelos customizados de uma campanha (texto livre
+ * digitado no wizard "Nova Campanha"), substituindo os placeholders literais
+ * `${nome}` e `${matricula}` pelos dados do motorista.
+ *
+ * @param {string[]} modelos - Textos dos modelos configurados na campanha.
+ * @param {string} nome
+ * @param {string} matricula
+ * @returns {string}
+ */
+function montarMensagemCampanha(modelos, nome, matricula) {
+  const modelo = modelos[Math.floor(Math.random() * modelos.length)];
+  return modelo
+    .split('${nome}').join(nome)
+    .split('${matricula}').join(matricula);
+}
+
+module.exports = { montarMensagem, montarMensagemCampanha };

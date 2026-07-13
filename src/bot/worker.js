@@ -6,6 +6,7 @@ const { marcar } = require('../services/progressService');
 const { enviarMensagem } = require('./sender');
 const { tirarPrint } = require('./screenshot');
 const { criarCliente } = require('./client');
+const { montarMensagem, montarMensagemCampanha } = require('../utils/message');
 const config = require('../config');
 
 const { delayMin, delayMax, pausaACada, pausaLonga, respiroCada, respiroDuracao } = config.bot;
@@ -21,10 +22,12 @@ const { delayMin, delayMax, pausaACada, pausaLonga, respiroCada, respiroDuracao 
  * @param {Array<{nome: string, matricula: string, celular: string}>} lista
  *   Lista de motoristas pendentes atribuída a esta conta.
  * @param {import('whatsapp-web.js').MessageMedia} media - Objeto de mídia (imagem) a enviar.
+ * @param {string[]} [modelosCampanha] - Modelos de mensagem customizados da campanha ativa.
+ *   Se vazio/ausente, usa os modelos padrão do sistema.
  * @returns {Promise<Array<{nome: string, matricula: string, celular: string, conta: number, status: string, print: string|null, erro: string|null}>>}
  *   Lista de resultados individuais de cada envio desta conta.
  */
-async function rodarConta(contaId, lista, media) {
+async function rodarConta(contaId, lista, media, modelosCampanha) {
   const prefixo = `[CONTA ${contaId}]`;
 
   return new Promise((resolve) => {
@@ -78,12 +81,15 @@ async function rodarConta(contaId, lista, media) {
           // Marca como PROCESSANDO antes de qualquer ação para evitar reenvio em caso de crash
           marcar(matricula, { ...resultado, status: 'PROCESSANDO' });
 
+          const texto = modelosCampanha && modelosCampanha.length > 0
+            ? montarMensagemCampanha(modelosCampanha, nome, matricula)
+            : montarMensagem(nome, matricula);
+
           const { ok, idCorreto, erro } = await enviarMensagem(
             client,
             celular,
             media,
-            nome,
-            matricula
+            texto
           );
 
           if (!ok) {

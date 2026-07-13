@@ -114,11 +114,20 @@ const server = http.createServer((req, res) => {
   if (templatesRoute.handler(req, res)) return;
   if (contasRoute.handler(req, res)) return;
 
-  // Serve a imagem do informativo para preview nos cards de campanha
+  // Serve a imagem do informativo para preview nos cards de campanha.
+  // Se a campanha (?campanha=id) tiver uma imagem customizada própria, serve ela;
+  // senão cai na imagem padrão do sistema.
   if (url === '/api/campanha/imagem') {
-    const imgPath = config.paths.imagem;
+    const { campanha: campanhaId } = require('url').parse(req.url, true).query;
+    let imgPath = config.paths.imagem;
+    if (campanhaId) {
+      const c = campanhasSvc.buscar(campanhaId);
+      if (c?.imagem && fs.existsSync(c.imagem)) imgPath = c.imagem;
+    }
     if (!fs.existsSync(imgPath)) { res.writeHead(404); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
+    const ext = path.extname(imgPath).toLowerCase();
+    const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
     fs.createReadStream(imgPath).pipe(res);
     return;
   }

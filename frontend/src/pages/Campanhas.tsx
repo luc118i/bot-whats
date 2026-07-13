@@ -422,7 +422,7 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer }: {
       <div className="w-24 shrink-0 p-3 flex items-center justify-center">
         <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-100 shrink-0">
           <img
-            src="/api/campanha/imagem"
+            src={`/api/campanha/imagem?campanha=${c.id}`}
             alt="Informativo"
             className="w-full h-full object-cover"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}

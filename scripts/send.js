@@ -31,7 +31,11 @@ async function main() {
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
   });
 
-  if (!fs.existsSync(config.paths.imagem)) {
+  // Filtros e conteúdo da campanha ativa (público-alvo, status e mensagem/imagem customizadas)
+  const campanhaAtiva = campanhasSvc.obterAtiva();
+  const temImagemCustomizada = campanhaAtiva?.imagem && fs.existsSync(campanhaAtiva.imagem);
+
+  if (!temImagemCustomizada && !fs.existsSync(config.paths.imagem)) {
     console.error(`❌ IMAGEM NÃO ENCONTRADA: ${config.paths.imagem}`);
     process.exit(1);
   }
@@ -39,8 +43,6 @@ async function main() {
   const motoristas = lerMotoristas();
   const progresso = carregar();
 
-  // Filtros da campanha ativa (público-alvo e status a (re)enviar)
-  const campanhaAtiva = campanhasSvc.obterAtiva();
   const filtroBaseOp = campanhaAtiva?.config?.filtroBaseOp || [];
   const filtroStatus = campanhaAtiva?.config?.filtroStatus || 'PENDENTE';
   if (filtroBaseOp.length > 0) {
@@ -153,10 +155,19 @@ async function main() {
     console.log('\n⚠️  Um navegador vai abrir. Escaneie o QR Code com sua conta WhatsApp.\n');
   }
 
-  const media = MessageMedia.fromFilePath(config.paths.imagem);
+  // Usa a imagem customizada da campanha, se houver, senão a imagem padrão do sistema
+  const imagemPath = temImagemCustomizada ? campanhaAtiva.imagem : config.paths.imagem;
+  const modelosCampanha = campanhaAtiva?.modelos || [];
+  if (imagemPath !== config.paths.imagem) {
+    console.log(`🖼️  Usando imagem customizada da campanha: ${imagemPath}`);
+  }
+  if (modelosCampanha.length > 0) {
+    console.log(`✍️  Usando ${modelosCampanha.length} modelo(s) de mensagem customizado(s) da campanha.`);
+  }
+  const media = MessageMedia.fromFilePath(imagemPath);
 
   // Roda as contas em paralelo
-  await Promise.all(listas.map((lista, i) => rodarConta(i + 1, lista, media)));
+  await Promise.all(listas.map((lista, i) => rodarConta(i + 1, lista, media, modelosCampanha)));
 
   // Relatório unificado
   console.log('\n═══════════════════════════════════════════════');
