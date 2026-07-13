@@ -106,10 +106,14 @@ function montarMensagem(nome, matricula) {
  * @returns {string}
  */
 function montarMensagemCampanha(modelos, nome, matricula) {
+  const { ctas, rodapes } = carregarTemplates();
   const modelo = modelos[Math.floor(Math.random() * modelos.length)];
-  return modelo
+  const texto = modelo
     .split('${nome}').join(nome)
     .split('${matricula}').join(matricula);
+  const cta    = ctas[Math.floor(Math.random() * ctas.length)];
+  const rodape = rodapes[Math.floor(Math.random() * rodapes.length)];
+  return `${texto}\n\n${cta}\n\n${rodape}`;
 }
 
 module.exports = { montarMensagem, montarMensagemCampanha };
