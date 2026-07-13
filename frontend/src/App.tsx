@@ -23,30 +23,36 @@ const queryClient = new QueryClient({
 
 function AppInner() {
   const [page, setPage] = useState<Page>('dashboard')
+  const [editCampanhaId, setEditCampanhaId] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { data: botStatus } = useBotStatus()
 
+  function navigate(p: Page, campanhaId?: string) {
+    setEditCampanhaId(campanhaId ?? null)
+    setPage(p)
+  }
+
   // Páginas com layout próprio (sem sidebar/header do sistema)
   if (page === 'nova-campanha') {
-    return <NovaCampanhaPage onNavigate={setPage} />
+    return <NovaCampanhaPage onNavigate={navigate} editCampanhaId={editCampanhaId} />
   }
 
   return (
     <Layout
       page={page}
-      onNavigate={setPage}
+      onNavigate={navigate}
       sidebarCollapsed={sidebarCollapsed}
       onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       botStatus={botStatus}
     >
-      {page === 'dashboard'    && <Dashboard onNavigate={setPage} />}
+      {page === 'dashboard'    && <Dashboard onNavigate={navigate} />}
       {page === 'imports'      && <Imports />}
       {page === 'logs'         && <LogsPage />}
       {page === 'contatos'     && <ContatosPage />}
       {page === 'configuracoes'&& <ConfiguracoesPage />}
       {page === 'envios'       && <EnviosPage />}
       {page === 'relatorios'   && <RelatoriosPage />}
-      {page === 'campanhas'    && <CampanhasPage onNavigate={setPage} />}
+      {page === 'campanhas'    && <CampanhasPage onNavigate={navigate} />}
       {page === 'templates'    && <TemplatesPage />}
     </Layout>
   )

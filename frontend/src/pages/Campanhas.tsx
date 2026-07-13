@@ -261,9 +261,10 @@ interface AcaoItem {
   dividerBefore?: boolean
 }
 
-function DropdownAcoes({ campanha, onVer, onDuplicar, onExcluir, onIniciar }: {
+function DropdownAcoes({ campanha, onVer, onEditar, onDuplicar, onExcluir, onIniciar }: {
   campanha:   Campanha
   onVer:      () => void
+  onEditar:   () => void
   onDuplicar: () => void
   onExcluir:  () => void
   onIniciar:  () => void
@@ -287,6 +288,9 @@ function DropdownAcoes({ campanha, onVer, onDuplicar, onExcluir, onIniciar }: {
   const acoes: AcaoItem[] = [
     // Visualizar — sempre disponível
     { label: 'Visualizar detalhes', icon: Eye, onClick: onVer },
+
+    // Editar — sempre disponível, em qualquer status
+    { label: 'Editar campanha', icon: Pencil, onClick: onEditar },
 
     // Iniciar — rascunho ou agendada
     ...(s === 'rascunho' || s === 'agendada' ? [{
@@ -371,10 +375,11 @@ function DropdownAcoes({ campanha, onVer, onDuplicar, onExcluir, onIniciar }: {
   )
 }
 
-function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer }: {
+function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEditar }: {
   campanha: Campanha
   onDuplicar: () => void; onExcluir: () => void
   onIniciar:  () => void; onVer:     () => void
+  onEditar:   () => void
 }) {
   const c    = campanha
   const taxa = c.stats.total > 0 ? ((c.stats.enviados / c.stats.total) * 100).toFixed(1) : null
@@ -507,6 +512,7 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer }: {
         <DropdownAcoes
           campanha={c}
           onVer={onVer}
+          onEditar={onEditar}
           onDuplicar={onDuplicar}
           onExcluir={onExcluir}
           onIniciar={onIniciar}
@@ -516,12 +522,13 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer }: {
   )
 }
 
-function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer }: {
+function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer, onEditar }: {
   campanhas: Campanha[]
   onDuplicar: (id: string) => void
   onExcluir:  (id: string) => void
   onIniciar:  (id: string) => void
   onVer:      (c: Campanha) => void
+  onEditar:   (id: string) => void
 }) {
   if (campanhas.length === 0) {
     return (
@@ -556,6 +563,7 @@ function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer }:
             key={c.id}
             campanha={c}
             onVer={() => onVer(c)}
+            onEditar={() => onEditar(c.id)}
             onDuplicar={() => onDuplicar(c.id)}
             onExcluir={() => onExcluir(c.id)}
             onIniciar={() => onIniciar(c.id)}
@@ -624,7 +632,7 @@ function ModalDetalhes({ campanha, onClose }: { campanha: Campanha; onClose: () 
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-export default function Campanhas({ onNavigate }: { onNavigate?: (p: import('../types').Page) => void }) {
+export default function Campanhas({ onNavigate }: { onNavigate?: (p: import('../types').Page, campanhaId?: string) => void }) {
   const qc = useQueryClient()
   const [detalhesCampanha, setDetalhesCampanha] = useState<Campanha | null>(null)
   const [toast, setToast] = useState<{ msg: string; tipo: 'ok' | 'err' } | null>(null)
@@ -745,6 +753,7 @@ export default function Campanhas({ onNavigate }: { onNavigate?: (p: import('../
           onExcluir={id => { if (confirm('Excluir esta campanha?')) mutExcluir.mutate(id) }}
           onIniciar={id => mutIniciar.mutate(id)}
           onVer={c => setDetalhesCampanha(c)}
+          onEditar={id => onNavigate?.('nova-campanha', id)}
         />
       </div>
 

@@ -747,19 +747,78 @@ function StepSidebar({ current, visited, form, onGoTo }: {
 
 interface NovaCampanhaProps {
   onNavigate: (p: Page) => void
+  editCampanhaId?: string | null
 }
 
-export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
+async function blobParaDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+export default function NovaCampanha({ onNavigate, editCampanhaId }: NovaCampanhaProps) {
   const qc = useQueryClient()
+  const isEdit = !!editCampanhaId
   const [step,    setStep]    = useState(0)
   const [visited, setVisited] = useState<Set<number>>(new Set([0]))
   const [form,    setFormRaw] = useState<FormData>(INITIAL_FORM)
   const [errors,  setErrors]  = useState<string[]>([])
   const [saving,  setSaving]  = useState(false)
+  const [carregando, setCarregando] = useState(isEdit)
 
   function set(partial: Partial<FormData>) {
     setFormRaw(f => ({ ...f, ...partial }))
   }
+
+  // Modo edição: carrega os dados da campanha existente e pré-preenche o formulário
+  useEffect(() => {
+    if (!editCampanhaId) return
+    let cancelado = false
+
+    async function carregar() {
+      try {
+        const r = await fetch(`/api/campanhas/${editCampanhaId}`)
+        const { campanha: c } = await r.json()
+        if (!c || cancelado) return
+
+        let imagemBase64: string | null = null
+        let imagemNome: string | null = null
+        let imagemTipo: string | null = null
+        if (c.imagem) {
+          const ri = await fetch(`/api/campanha/imagem?campanha=${editCampanhaId}`)
+          const blob = await ri.blob()
+          imagemBase64 = await blobParaDataUri(blob)
+          imagemTipo = blob.type
+          imagemNome = 'imagem-atual' + (blob.type.includes('jpeg') ? '.jpg' : blob.type.includes('webp') ? '.webp' : '.png')
+        }
+
+        if (cancelado) return
+        const modelosTextos: string[] = Array.isArray(c.modelos) ? c.modelos : []
+        setFormRaw({
+          nome:         c.nome ?? '',
+          descricao:    c.descricao ?? '',
+          responsavel:  c.responsavel ?? '',
+          agendamento:  c.agendadoPara ? 'agendado' : 'imediato',
+          agendadoPara: c.agendadoPara ?? '',
+          filtroBase:   c.config?.filtroBase   ?? 'ALL',
+          filtroStatus: c.config?.filtroStatus ?? 'PENDENTE',
+          filtroBaseOp: c.config?.filtroBaseOp ?? [],
+          delayMin:     c.config?.delayMin ?? 15,
+          delayMax:     c.config?.delayMax ?? 45,
+          modelos: Array(5).fill(null).map((_, i) => ({ texto: modelosTextos[i] ?? '', previewOpen: false })),
+          imagemBase64, imagemNome, imagemTipo,
+        })
+      } finally {
+        if (!cancelado) setCarregando(false)
+      }
+    }
+
+    carregar()
+    return () => { cancelado = true }
+  }, [editCampanhaId])
 
   function goTo(i: number) {
     setErrors([])
@@ -791,44 +850,64 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
 
     setSaving(true)
     try {
-      const payload = {
-        nome:         form.nome.trim(),
-        descricao:    form.descricao.trim(),
-        responsavel:  form.responsavel.trim() || 'Sistema',
-        agendadoPara: form.agendamento === 'agendado' ? form.agendadoPara : null,
-        status:       rascunho ? 'rascunho' : 'agendada',
-        config: {
-          filtroBase:     form.filtroBase,
-          filtroBaseOp:   form.filtroBaseOp,
-          filtroStatus:   form.filtroStatus,
-          modeloMensagem: 'campanha',
-          delayMin:       form.delayMin,
-          delayMax:       form.delayMax,
-        },
-        modelos:      form.modelos.map(m => m.texto),
-        imagemBase64: form.imagemBase64,
+      const configBase = {
+        filtroBase:     form.filtroBase,
+        filtroBaseOp:   form.filtroBaseOp,
+        filtroStatus:   form.filtroStatus,
+        modeloMensagem: 'campanha',
+        delayMin:       form.delayMin,
+        delayMax:       form.delayMax,
       }
 
-      const r = await fetch('/api/campanhas', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      })
-      const data = await r.json()
-      if (!data.ok) throw new Error(data.erro ?? 'Erro ao criar.')
+      if (isEdit) {
+        const payload = {
+          nome:         form.nome.trim(),
+          descricao:    form.descricao.trim(),
+          responsavel:  form.responsavel.trim() || 'Sistema',
+          agendadoPara: form.agendamento === 'agendado' ? form.agendadoPara : null,
+          config:       configBase,
+          modelos:      form.modelos.map(m => m.texto),
+          imagemBase64: form.imagemBase64,
+        }
+        const r = await fetch(`/api/campanhas/${editCampanhaId}`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        })
+        const data = await r.json()
+        if (!data.ok) throw new Error(data.erro ?? 'Erro ao salvar alterações.')
+      } else {
+        const payload = {
+          nome:         form.nome.trim(),
+          descricao:    form.descricao.trim(),
+          responsavel:  form.responsavel.trim() || 'Sistema',
+          agendadoPara: form.agendamento === 'agendado' ? form.agendadoPara : null,
+          status:       rascunho ? 'rascunho' : 'agendada',
+          config:       configBase,
+          modelos:      form.modelos.map(m => m.texto),
+          imagemBase64: form.imagemBase64,
+        }
+        const r = await fetch('/api/campanhas', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        })
+        const data = await r.json()
+        if (!data.ok) throw new Error(data.erro ?? 'Erro ao criar.')
 
-      // Se imediato, inicia o bot automaticamente
-      if (!rascunho && form.agendamento === 'imediato') {
-        const ri = await fetch(`/api/campanhas/${data.campanha.id}/iniciar`, { method: 'POST' })
-        const di = await ri.json()
-        if (!di.ok) throw new Error(di.erro ?? 'Campanha criada mas não foi possível iniciar.')
+        // Se imediato, inicia o bot automaticamente
+        if (!rascunho && form.agendamento === 'imediato') {
+          const ri = await fetch(`/api/campanhas/${data.campanha.id}/iniciar`, { method: 'POST' })
+          const di = await ri.json()
+          if (!di.ok) throw new Error(di.erro ?? 'Campanha criada mas não foi possível iniciar.')
+        }
       }
 
       qc.invalidateQueries({ queryKey: ['campanhas'] })
       qc.invalidateQueries({ queryKey: ['campanha-ativa'] })
       onNavigate('campanhas')
     } catch (e: any) {
-      setErrors([e.message ?? 'Erro ao criar campanha.'])
+      setErrors([e.message ?? 'Erro ao salvar campanha.'])
     } finally {
       setSaving(false)
     }
@@ -847,6 +926,14 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
     }
   })()
 
+  if (carregando) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-sm text-gray-400">Carregando campanha...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top bar */}
@@ -859,7 +946,7 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
               Campanhas
             </button>
             <ChevronRight size={14} className="text-gray-300" />
-            <span className="text-sm font-semibold text-gray-900">Nova Campanha</span>
+            <span className="text-sm font-semibold text-gray-900">{isEdit ? 'Editar Campanha' : 'Nova Campanha'}</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -872,13 +959,15 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
               </div>
               <span className="text-xs font-medium text-gray-500 ml-1">{step + 1}/{STEPS.length}</span>
             </div>
-            <button
-              onClick={() => criar(true)}
-              disabled={!form.nome.trim() || saving}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >
-              <Save size={14} /> Salvar rascunho
-            </button>
+            {!isEdit && (
+              <button
+                onClick={() => criar(true)}
+                disabled={!form.nome.trim() || saving}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <Save size={14} /> Salvar rascunho
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -890,8 +979,8 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
           <aside className="w-64 flex-shrink-0">
             <div className="sticky top-24 space-y-4">
               <div>
-                <h1 className="text-lg font-extrabold text-gray-900">Nova Campanha</h1>
-                <p className="text-sm text-gray-400 mt-0.5">Configure e crie sua campanha de disparo</p>
+                <h1 className="text-lg font-extrabold text-gray-900">{isEdit ? 'Editar Campanha' : 'Nova Campanha'}</h1>
+                <p className="text-sm text-gray-400 mt-0.5">{isEdit ? 'Altere os dados desta campanha' : 'Configure e crie sua campanha de disparo'}</p>
               </div>
               <StepSidebar current={step} visited={visited} form={form} onGoTo={goTo} />
             </div>
@@ -939,7 +1028,7 @@ export default function NovaCampanha({ onNavigate }: NovaCampanhaProps) {
                   className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-all shadow-sm shadow-brand/30"
                   style={{ background: '#F56600' }}
                 >
-                  {saving ? 'Criando...' : <><FileText size={15} /> Criar Campanha</>}
+                  {saving ? 'Salvando...' : <><FileText size={15} /> {isEdit ? 'Salvar Alterações' : 'Criar Campanha'}</>}
                 </button>
               ) : (
                 <button

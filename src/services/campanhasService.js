@@ -108,6 +108,17 @@ function atualizar(id, dados) {
   // Merge profundo para config e stats
   if (dados.config) dados.config = { ...lista[idx].config, ...dados.config };
   if (dados.stats)  dados.stats  = { ...lista[idx].stats,  ...dados.stats  };
+  if (Array.isArray(dados.modelos)) {
+    dados.modelos = dados.modelos.filter(t => t && t.trim());
+  }
+  // imagemBase64 presente no payload = usuário editou a imagem (nova, ou null pra remover)
+  if ('imagemBase64' in dados) {
+    if (lista[idx].imagem && fs.existsSync(lista[idx].imagem)) {
+      try { fs.unlinkSync(lista[idx].imagem); } catch (_) {}
+    }
+    dados.imagem = dados.imagemBase64 ? salvarImagemCampanha(id, dados.imagemBase64) : null;
+    delete dados.imagemBase64;
+  }
   lista[idx] = { ...lista[idx], ...dados };
   salvar(lista);
   return lista[idx];
