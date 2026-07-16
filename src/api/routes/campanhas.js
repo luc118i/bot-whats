@@ -22,11 +22,26 @@ function lerStats() {
   } catch (_) { return {}; }
 }
 
-function calcularStats() {
-  const prog    = lerStats();
-  const entries = Object.values(prog);
-  let totalPlanilha = entries.length;
-  try { const { lerMotoristas } = require('../../services/spreadsheetService'); totalPlanilha = lerMotoristas().length; } catch (_) {}
+// filtroBaseOp: bases operacionais selecionadas no público-alvo da campanha (ex.: ['GBSB','GGYN']).
+// Quando presente, restringe os totais/estatísticas ao mesmo recorte que o send.js usa de fato,
+// em vez de contar a planilha inteira — senão o painel mostra "310 válidos" quando a campanha
+// na verdade só mira ~107 motoristas de uma região.
+function calcularStats(filtroBaseOp) {
+  const prog = lerStats();
+  const temFiltro = Array.isArray(filtroBaseOp) && filtroBaseOp.length > 0;
+
+  let motoristas = [];
+  try { motoristas = require('../../services/spreadsheetService').lerMotoristas(); } catch (_) {}
+  const motoristasFiltrados = temFiltro ? motoristas.filter(m => filtroBaseOp.includes(m.base)) : motoristas;
+  const matriculasFiltradas = new Set(motoristasFiltrados.map(m => m.matricula));
+
+  const entriesTodas = Object.entries(prog);
+  const entriesFiltradas = temFiltro
+    ? entriesTodas.filter(([matricula]) => matriculasFiltradas.has(matricula))
+    : entriesTodas;
+  const entries = entriesFiltradas.map(([, v]) => v);
+
+  const totalPlanilha = motoristasFiltrados.length || entries.length;
   const enviados    = entries.filter(e => e.status === 'ENVIADO').length;
   const processando = entries.filter(e => e.status === 'PROCESSANDO').length;
   const semNumero   = entries.filter(e => e.status === 'SEM_NUMERO').length;
@@ -161,8 +176,8 @@ function handler(req, res) {
   if (url === '/api/campanhas/ativa' && method === 'GET') {
     const ativa = svc.obterAtiva();
     if (!ativa) { json(res, 200, { ativa: null }); return true; }
-    // Injeta stats em tempo real do progresso.json
-    const statsAtuais = calcularStats();
+    // Injeta stats em tempo real do progresso.json, recortadas pelo público-alvo da campanha
+    const statsAtuais = calcularStats(ativa.config?.filtroBaseOp);
     const inicio = ativa.iniciadoEm ? new Date(ativa.iniciadoEm) : null;
     const duracaoSegundos = inicio ? Math.floor((Date.now() - inicio.getTime()) / 1000) : 0;
     json(res, 200, { ativa: { ...ativa, stats: { ...ativa.stats, ...statsAtuais, duracaoSegundos } } });
@@ -189,8 +204,12 @@ function handler(req, res) {
     const campanha = svc.buscar(id);
     if (!campanha) return json(res, 404, { ok: false, erro: 'Campanha não encontrada.' });
     if (getStatus().running) return json(res, 409, { ok: false, erro: 'Já existe um processo em execução.' });
+    // Uma campanha apenas pausada (sem processo rodando) não deve impedir o início
+    // de outra — só bloqueia se a outra campanha estiver de fato em execução.
     const ativa = svc.obterAtiva();
-    if (ativa && ativa.id !== id) return json(res, 409, { ok: false, erro: 'Outra campanha já está ativa.' });
+    if (ativa && ativa.id !== id && ativa.status === 'executando') {
+      return json(res, 409, { ok: false, erro: 'Outra campanha já está ativa.' });
+    }
 
     svc.iniciar(id);
     const result = run('send', ['scripts/send.js']);
@@ -204,7 +223,7 @@ function handler(req, res) {
     const id = matchAction[1];
     const campanha = svc.buscar(id);
     if (!campanha) return json(res, 404, { ok: false, erro: 'Campanha não encontrada.' });
-    const stats = calcularStats();
+    const stats = calcularStats(campanha.config?.filtroBaseOp);
     const inicio = campanha.iniciadoEm ? new Date(campanha.iniciadoEm) : new Date();
     stats.duracaoSegundos = Math.floor((Date.now() - inicio.getTime()) / 1000);
     const c = svc.finalizar(id, stats);

@@ -54,6 +54,7 @@ interface Campanha {
   config:       CampanhaConfig
   stats:        CampanhaStats
   eventos:      Evento[]
+  imagem:       string | null
 }
 
 interface Metricas {
@@ -261,13 +262,17 @@ interface AcaoItem {
   dividerBefore?: boolean
 }
 
-function DropdownAcoes({ campanha, onVer, onEditar, onDuplicar, onExcluir, onIniciar }: {
+function DropdownAcoes({ campanha, onVer, onEditar, onDuplicar, onExcluir, onIniciar, onPausar, onRetomar, onCancelar, onFinalizar }: {
   campanha:   Campanha
   onVer:      () => void
   onEditar:   () => void
   onDuplicar: () => void
   onExcluir:  () => void
   onIniciar:  () => void
+  onPausar:   () => void
+  onRetomar:  () => void
+  onCancelar: () => void
+  onFinalizar: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos]   = useState({ top: 0, right: 0 })
@@ -296,6 +301,30 @@ function DropdownAcoes({ campanha, onVer, onEditar, onDuplicar, onExcluir, onIni
     ...(s === 'rascunho' || s === 'agendada' ? [{
       label: 'Iniciar campanha', icon: Play,
       color: 'text-green-700', hoverBg: 'hover:bg-green-50', onClick: onIniciar,
+    }] : []),
+
+    // Pausar — executando
+    ...(s === 'executando' ? [{
+      label: 'Pausar', icon: Pause,
+      color: 'text-amber-700', hoverBg: 'hover:bg-amber-50', onClick: onPausar,
+    }] : []),
+
+    // Retomar — pausada
+    ...(s === 'pausada' ? [{
+      label: 'Retomar', icon: Play,
+      color: 'text-green-700', hoverBg: 'hover:bg-green-50', onClick: onRetomar,
+    }] : []),
+
+    // Marcar como finalizada — executando ou pausada
+    ...(s === 'executando' || s === 'pausada' ? [{
+      label: 'Marcar como finalizada', icon: Check,
+      color: 'text-blue-700', hoverBg: 'hover:bg-blue-50', onClick: onFinalizar,
+    }] : []),
+
+    // Parar (cancelar) — executando ou pausada
+    ...(s === 'executando' || s === 'pausada' ? [{
+      label: 'Parar campanha', icon: StopCircle,
+      color: 'text-red-600', hoverBg: 'hover:bg-red-50', onClick: onCancelar,
     }] : []),
 
     // Repetir — finalizada ou cancelada
@@ -375,11 +404,13 @@ function DropdownAcoes({ campanha, onVer, onEditar, onDuplicar, onExcluir, onIni
   )
 }
 
-function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEditar }: {
+function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEditar, onPausar, onRetomar, onCancelar, onFinalizar }: {
   campanha: Campanha
   onDuplicar: () => void; onExcluir: () => void
   onIniciar:  () => void; onVer:     () => void
   onEditar:   () => void
+  onPausar:   () => void; onRetomar:  () => void
+  onCancelar: () => void; onFinalizar: () => void
 }) {
   const c    = campanha
   const taxa = c.stats.total > 0 ? ((c.stats.enviados / c.stats.total) * 100).toFixed(1) : null
@@ -423,15 +454,19 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEdi
       animate={{ opacity: 1, y: 0 }}
       className="flex items-stretch gap-0 border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors group"
     >
-      {/* Thumbnail da imagem */}
+      {/* Thumbnail da mídia */}
       <div className="w-24 shrink-0 p-3 flex items-center justify-center">
         <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-100 shrink-0">
-          <img
-            src={`/api/campanha/imagem?campanha=${c.id}`}
-            alt="Informativo"
-            className="w-full h-full object-cover"
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-          />
+          {/\.(mp4|mov|webm)$/i.test(c.imagem || '') ? (
+            <video src={`/api/campanha/imagem?campanha=${c.id}`} className="w-full h-full object-cover" muted />
+          ) : (
+            <img
+              src={`/api/campanha/imagem?campanha=${c.id}`}
+              alt="Informativo"
+              className="w-full h-full object-cover"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
         </div>
       </div>
 
@@ -508,7 +543,7 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEdi
       </div>
 
       {/* Ações */}
-      <div className="shrink-0 flex items-center px-4 py-4">
+      <div className="w-24 shrink-0 flex items-center justify-center py-4">
         <DropdownAcoes
           campanha={c}
           onVer={onVer}
@@ -516,19 +551,27 @@ function CampanhaCard({ campanha, onDuplicar, onExcluir, onIniciar, onVer, onEdi
           onDuplicar={onDuplicar}
           onExcluir={onExcluir}
           onIniciar={onIniciar}
+          onPausar={onPausar}
+          onRetomar={onRetomar}
+          onCancelar={onCancelar}
+          onFinalizar={onFinalizar}
         />
       </div>
     </motion.div>
   )
 }
 
-function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer, onEditar }: {
+function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer, onEditar, onPausar, onRetomar, onCancelar, onFinalizar }: {
   campanhas: Campanha[]
   onDuplicar: (id: string) => void
   onExcluir:  (id: string) => void
   onIniciar:  (id: string) => void
   onVer:      (c: Campanha) => void
   onEditar:   (id: string) => void
+  onPausar:    (id: string) => void
+  onRetomar:   (id: string) => void
+  onCancelar:  (id: string) => void
+  onFinalizar: (id: string) => void
 }) {
   if (campanhas.length === 0) {
     return (
@@ -567,6 +610,10 @@ function TabelaHistorico({ campanhas, onDuplicar, onExcluir, onIniciar, onVer, o
             onDuplicar={() => onDuplicar(c.id)}
             onExcluir={() => onExcluir(c.id)}
             onIniciar={() => onIniciar(c.id)}
+            onPausar={() => onPausar(c.id)}
+            onRetomar={() => onRetomar(c.id)}
+            onCancelar={() => { if (confirm(`Parar a campanha "${c.nome}"?`)) onCancelar(c.id) }}
+            onFinalizar={() => { if (confirm(`Marcar "${c.nome}" como finalizada?`)) onFinalizar(c.id) }}
           />
         ))}
       </AnimatePresence>
@@ -664,8 +711,8 @@ export default function Campanhas({ onNavigate }: { onNavigate?: (p: import('../
 
   // Mutations
   const mutIniciar  = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/iniciar`),   onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanhas'] }); qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); showToast('Disparo iniciado — WhatsApp abrindo...') },       onError: (e: any) => showToast(e?.response?.data?.erro || 'Não foi possível iniciar o disparo.', 'err') })
-  const mutPausar   = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/pausar`),    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); showToast('Campanha pausada. Retome quando quiser.') } })
-  const mutRetomar  = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/retomar`),   onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); showToast('Disparo retomado — enviando mensagens...') } })
+  const mutPausar   = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/pausar`),    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); qc.invalidateQueries({ queryKey: ['campanhas'] }); showToast('Campanha pausada. Retome quando quiser.') } })
+  const mutRetomar  = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/retomar`),   onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); qc.invalidateQueries({ queryKey: ['campanhas'] }); showToast('Disparo retomado — enviando mensagens...') },  onError: (e: any) => showToast(e?.response?.data?.erro || 'Não foi possível retomar.', 'err') })
   const mutCancelar  = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/cancelar`), onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanhas'] }); qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); showToast('Campanha cancelada e encerrada.') } })
   const mutFinalizar = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/finalizar`),onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanhas'] }); qc.invalidateQueries({ queryKey: ['campanha-ativa'] }); showToast('Campanha concluída com sucesso!') },             onError: (e: any) => showToast(e?.response?.data?.erro || 'Erro ao finalizar.', 'err') })
   const mutDuplicar  = useMutation({ mutationFn: (id: string) => axios.post(`/api/campanhas/${id}/duplicar`), onSuccess: () => { qc.invalidateQueries({ queryKey: ['campanhas'] }); showToast('Campanha duplicada — edite e inicie quando quiser.') } })
@@ -754,6 +801,10 @@ export default function Campanhas({ onNavigate }: { onNavigate?: (p: import('../
           onIniciar={id => mutIniciar.mutate(id)}
           onVer={c => setDetalhesCampanha(c)}
           onEditar={id => onNavigate?.('nova-campanha', id)}
+          onPausar={id => mutPausar.mutate(id)}
+          onRetomar={id => mutRetomar.mutate(id)}
+          onCancelar={id => mutCancelar.mutate(id)}
+          onFinalizar={id => mutFinalizar.mutate(id)}
         />
       </div>
 

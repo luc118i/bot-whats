@@ -11,14 +11,14 @@ const IMAGENS_DIR   = path.join(ROOT, 'campanhas_imagens');
 const PROGRESSO_FILE = path.join(ROOT, 'progresso.json');
 
 // Decodifica uma data URI (base64) enviada pelo wizard e salva como arquivo,
-// para o send.js poder usar essa imagem no lugar da imagem padrão do sistema.
+// para o send.js poder usar essa mídia (imagem ou vídeo) no lugar da imagem padrão do sistema.
 function salvarImagemCampanha(id, dataUri) {
-  const match = /^data:(image\/\w+);base64,(.+)$/.exec(dataUri || '');
+  const match = /^data:(image|video)\/([\w-]+);base64,(.+)$/.exec(dataUri || '');
   if (!match) return null;
-  const ext = match[1].split('/')[1].replace('jpeg', 'jpg');
+  const ext = match[2].replace('jpeg', 'jpg').replace('quicktime', 'mov');
   if (!fs.existsSync(IMAGENS_DIR)) fs.mkdirSync(IMAGENS_DIR, { recursive: true });
   const destino = path.join(IMAGENS_DIR, `${id}.${ext}`);
-  fs.writeFileSync(destino, Buffer.from(match[2], 'base64'));
+  fs.writeFileSync(destino, Buffer.from(match[3], 'base64'));
   return destino;
 }
 
@@ -145,7 +145,11 @@ function adicionarEvento(id, tipo, msg) {
 // ─── Ciclo de vida ────────────────────────────────────────────────────────────
 
 function obterAtiva() {
-  return ler().find(c => c.status === 'executando' || c.status === 'pausada') || null;
+  // Prioriza a campanha em execução — pode haver uma pausada e outra executando
+  // ao mesmo tempo (uma foi pausada para dar lugar a outra mais urgente), e é a
+  // que está executando que precisa aparecer no painel de controle (Pausar/Parar).
+  const lista = ler();
+  return lista.find(c => c.status === 'executando') || lista.find(c => c.status === 'pausada') || null;
 }
 
 function iniciar(id) {
@@ -161,12 +165,22 @@ function iniciar(id) {
 }
 
 function pausar(id) {
+  // Salva o progresso.json atual vinculado a este id, para poder restaurá-lo
+  // na retomada mesmo que outra campanha rode (e sobrescreva o arquivo) nesse meio-tempo.
+  salvarSnapshot(id);
   const c = atualizar(id, { status: 'pausada' });
   if (c) adicionarEvento(id, 'pausa', 'Campanha pausada pelo usuário.');
   return c;
 }
 
 function retomar(id) {
+  // Restaura o progresso salvo no momento da pausa — necessário caso outra
+  // campanha tenha sido iniciada (e resetado o progresso.json) enquanto esta
+  // estava pausada, senão a retomada reinicia do zero.
+  const snapshotPath = path.join(SNAPSHOTS_DIR, `${id}.json`);
+  if (fs.existsSync(snapshotPath)) {
+    fs.copyFileSync(snapshotPath, PROGRESSO_FILE);
+  }
   const c = atualizar(id, { status: 'executando' });
   if (c) adicionarEvento(id, 'retomada', 'Campanha retomada.');
   return c;

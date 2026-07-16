@@ -27,10 +27,21 @@ processController.onEnd(() => {
   let stats = { total: 0, enviados: 0, pendentes: 0, falhas: 0, semNumero: 0, semWhatsapp: 0, duplicados: 0, validos: 0 };
   try {
     if (fs.existsSync(config.paths.progresso)) {
-      const prog    = JSON.parse(fs.readFileSync(config.paths.progresso, 'utf8'));
-      const entries = Object.values(prog);
+      const prog = JSON.parse(fs.readFileSync(config.paths.progresso, 'utf8'));
       const { lerMotoristas } = require('../services/spreadsheetService');
-      const totalPlanilha = (() => { try { return lerMotoristas().length; } catch(_) { return entries.length; } })();
+      // Recorta pelo público-alvo (base operacional) da campanha, senão o total
+      // conta a planilha inteira mesmo quando a campanha mira só uma região.
+      const filtroBaseOp = ativa.config?.filtroBaseOp || [];
+      const temFiltro = filtroBaseOp.length > 0;
+      let motoristas = [];
+      try { motoristas = lerMotoristas(); } catch (_) {}
+      const motoristasFiltrados = temFiltro ? motoristas.filter(m => filtroBaseOp.includes(m.base)) : motoristas;
+      const matriculasFiltradas = new Set(motoristasFiltrados.map(m => m.matricula));
+      const entries = (temFiltro
+        ? Object.entries(prog).filter(([matricula]) => matriculasFiltradas.has(matricula))
+        : Object.entries(prog)
+      ).map(([, v]) => v);
+      const totalPlanilha = motoristasFiltrados.length || entries.length;
       const enviados    = entries.filter(e => e.status === 'ENVIADO').length;
       const processando = entries.filter(e => e.status === 'PROCESSANDO').length;
       const semNumero   = entries.filter(e => e.status === 'SEM_NUMERO').length;
@@ -126,7 +137,11 @@ const server = http.createServer((req, res) => {
     }
     if (!fs.existsSync(imgPath)) { res.writeHead(404); res.end(); return; }
     const ext = path.extname(imgPath).toLowerCase();
-    const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+    const MIME_MIDIA = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+      '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
+    };
+    const mime = MIME_MIDIA[ext] || 'image/png';
     res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
     fs.createReadStream(imgPath).pipe(res);
     return;

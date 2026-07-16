@@ -556,29 +556,40 @@ function StepImagem({ form, set }: { form: FormData; set: (f: Partial<FormData>)
   const [dragging, setDragging] = useState(false)
   const [error,   setError]    = useState<string | null>(null)
 
-  const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
-  const MAX_MB  = 5
+  const ALLOWED_IMG = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+  const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm']
+  const ALLOWED = [...ALLOWED_IMG, ...ALLOWED_VIDEO]
+  const MAX_MB_IMG   = 5
+  const MAX_MB_VIDEO = 16
 
   const processFile = useCallback((file: File) => {
     setError(null)
-    if (!ALLOWED.includes(file.type)) { setError('Formato inválido. Use PNG, JPG ou WEBP.'); return }
-    if (file.size > MAX_MB * 1024 * 1024) { setError(`Arquivo muito grande. Limite: ${MAX_MB}MB.`); return }
+    if (!ALLOWED.includes(file.type)) { setError('Formato inválido. Use PNG, JPG, WEBP ou vídeo MP4/MOV/WEBM.'); return }
+    const isVideo = file.type.startsWith('video/')
+    const maxMb = isVideo ? MAX_MB_VIDEO : MAX_MB_IMG
+    if (file.size > maxMb * 1024 * 1024) { setError(`Arquivo muito grande. Limite: ${maxMb}MB.`); return }
     const reader = new FileReader()
     reader.onload = e => set({ imagemBase64: e.target?.result as string, imagemNome: file.name, imagemTipo: file.type })
     reader.readAsDataURL(file)
   }, [set])
 
+  const isVideoSelecionado = form.imagemTipo?.startsWith('video/') ?? false
+
   return (
     <SectionCard
-      title="Imagem da Campanha"
-      description="Imagem enviada junto com a mensagem — opcional"
+      title="Mídia da Campanha"
+      description="Imagem ou vídeo enviado antes da mensagem de texto — opcional"
       icon={ImageIcon}
       badge={<span className="text-xs text-gray-400 bg-gray-100 px-3 py-1.5 rounded-xl font-medium">Opcional</span>}
     >
       {form.imagemBase64 ? (
         <div className="space-y-4">
           <div className="relative rounded-2xl overflow-hidden border-2 border-green-200 bg-green-50">
-            <img src={form.imagemBase64} alt={form.imagemNome ?? ''} className="w-full max-h-72 object-contain" />
+            {isVideoSelecionado ? (
+              <video src={form.imagemBase64} controls className="w-full max-h-72 object-contain" />
+            ) : (
+              <img src={form.imagemBase64} alt={form.imagemNome ?? ''} className="w-full max-h-72 object-contain" />
+            )}
             <button
               onClick={() => set({ imagemBase64: null, imagemNome: null, imagemTipo: null })}
               className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-gray-500 hover:text-red-500 hover:shadow-lg transition-all"
@@ -605,11 +616,11 @@ function StepImagem({ form, set }: { form: FormData; set: (f: Partial<FormData>)
             <Upload size={28} />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-gray-700">Arraste a imagem aqui</p>
+            <p className="font-semibold text-gray-700">Arraste a imagem ou vídeo aqui</p>
             <p className="text-sm text-gray-400 mt-1">ou clique para selecionar</p>
-            <p className="text-xs text-gray-300 mt-2">PNG, JPG, WEBP • Máximo {MAX_MB}MB</p>
+            <p className="text-xs text-gray-300 mt-2">PNG, JPG, WEBP (5MB) • MP4, MOV, WEBM ({MAX_MB_VIDEO}MB)</p>
           </div>
-          <input ref={inputRef} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden"
+          <input ref={inputRef} type="file" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
         </div>
       )}
@@ -792,7 +803,11 @@ export default function NovaCampanha({ onNavigate, editCampanhaId }: NovaCampanh
           const blob = await ri.blob()
           imagemBase64 = await blobParaDataUri(blob)
           imagemTipo = blob.type
-          imagemNome = 'imagem-atual' + (blob.type.includes('jpeg') ? '.jpg' : blob.type.includes('webp') ? '.webp' : '.png')
+          const extPorTipo: Record<string, string> = {
+            'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/png': '.png',
+            'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm',
+          }
+          imagemNome = 'midia-atual' + (extPorTipo[blob.type] || '.png')
         }
 
         if (cancelado) return
