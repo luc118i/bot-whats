@@ -15,6 +15,7 @@ const relatorioExcelRoute = require('./routes/relatorioExcel');
 const campanhasRoute      = require('./routes/campanhas');
 const templatesRoute      = require('./routes/templates');
 const contasRoute         = require('./routes/contas');
+const atividadeRoute      = require('./routes/atividade');
 const campanhasSvc        = require('../services/campanhasService');
 const progressService     = require('../services/progressService');
 const processController   = require('./processController');
@@ -123,6 +124,7 @@ const server = http.createServer((req, res) => {
   if (campanhasRoute.handler(req, res)) return;
   if (templatesRoute.handler(req, res)) return;
   if (contasRoute.handler(req, res)) return;
+  if (atividadeRoute.handler(req, res)) return;
 
   // Serve a imagem do informativo para preview nos cards de campanha.
   // Se a campanha (?campanha=id) tiver uma imagem customizada própria, serve ela;

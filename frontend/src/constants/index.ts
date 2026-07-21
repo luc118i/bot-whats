@@ -11,4 +11,3 @@ export const CMD_LABELS: Record<string, string> = {
 export const MAX_LOG_LINES = 200
 export const STATS_REFETCH_INTERVAL = 10_000
 export const STATUS_REFETCH_INTERVAL = 2_000
-export const ACTIVITY_WINDOW_MINUTES = 10

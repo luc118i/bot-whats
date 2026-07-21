@@ -27,9 +27,14 @@ export interface LogLine {
   text: string
 }
 
-export interface ActivityPoint {
-  minute: string
+export interface AtividadePonto {
+  ts: string
   enviados: number
+}
+
+export interface AtividadeResponse {
+  granularidadeMinutos: number
+  pontos: AtividadePonto[]
 }
 
 export interface DriverRow {

@@ -1,10 +1,15 @@
 import axios from 'axios'
-import type { Stats, BotStatus } from '../types'
+import type { Stats, BotStatus, AtividadeResponse } from '../types'
 
 const http = axios.create({ baseURL: '' })
 
 export async function fetchStats(): Promise<Stats> {
   const { data } = await http.get<Stats>('/api/stats')
+  return data
+}
+
+export async function fetchAtividade(horas: number): Promise<AtividadeResponse> {
+  const { data } = await http.get<AtividadeResponse>('/api/stats/atividade', { params: { horas } })
   return data
 }
 

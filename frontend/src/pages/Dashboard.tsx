@@ -4,6 +4,7 @@ import { Plus, BarChart2, CheckCircle2, Clock } from 'lucide-react'
 import { useStats } from '../hooks/useStats'
 import { useBotStatus } from '../hooks/useBotStatus'
 import { useLogs } from '../hooks/useLogs'
+import { useAtividade } from '../hooks/useAtividade'
 import { useCampanha, type CampanhaResumo } from '../context/CampanhaContext'
 import type { Stats } from '../types'
 import { KpiCards } from '../components/dashboard/KpiCards'
@@ -113,7 +114,8 @@ function IdleOverview({ campanhas, onNovaCampanha }: { campanhas: CampanhaResumo
 export function Dashboard({ onNavigate }: DashboardProps) {
   const { data: stats, isLoading: statsLoading } = useStats()
   const { data: botStatus, isLoading: statusLoading } = useBotStatus()
-  const { lines, activity, clearLogs } = useLogs()
+  const { lines, clearLogs } = useLogs()
+  const { pontos, granularidadeMinutos, horas, setHoras, loading: atividadeLoading } = useAtividade()
   const { campanhas, refetch: refetchCampanhas } = useCampanha()
 
   const { data: ativaData, refetch: refetchAtiva } = useQuery({
@@ -238,7 +240,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* ── Gráfico + Monitor ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2">
-          <ActivityChart data={activity} />
+          <ActivityChart
+            pontos={pontos}
+            granularidadeMinutos={granularidadeMinutos}
+            horas={horas}
+            onHorasChange={setHoras}
+            loading={atividadeLoading}
+          />
         </div>
         <BotMonitor botStatus={botStatus} loading={statusLoading} />
       </div>

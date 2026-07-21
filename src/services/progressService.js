@@ -86,4 +86,18 @@ function marcar(matricula, dados, campanhaId) {
   salvar(prog, campanhaId);
 }
 
-module.exports = { carregar, salvar, marcar, caminho };
+/**
+ * Lista os ids de todas as campanhas que já têm arquivo de progresso próprio
+ * (progresso/<id>.json). Usado para agregar atividade de envio entre campanhas
+ * (ver src/api/routes/atividade.js).
+ *
+ * @returns {string[]}
+ */
+function listarTodosCampanhaIds() {
+  if (!fs.existsSync(DIR_CAMPANHAS)) return [];
+  return fs.readdirSync(DIR_CAMPANHAS)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => f.slice(0, -5));
+}
+
+module.exports = { carregar, salvar, marcar, caminho, listarTodosCampanhaIds };
