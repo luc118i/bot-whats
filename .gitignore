@@ -16,6 +16,7 @@ motoristas_sem_numero.xlsx
 # Estado de execução e dados de campanhas (contém dados pessoais e histórico real)
 campanhas.json
 progresso.json
+progresso/
 snapshots/
 logs/
 output/

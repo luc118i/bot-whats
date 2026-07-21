@@ -34,7 +34,11 @@ function carregarConfig() {
   return {
     paths: {
       planilha:       path.join(ROOT, 'Pessoa - 30-06-2026 10-07.xlsx'),
+      // Progresso do fluxo avulso/legado sem campanha (ex: scripts/send.js standalone).
       progresso:      path.join(ROOT, 'progresso.json'),
+      // Progresso por campanha: um arquivo `<campanhaId>.json` por campanha, nunca
+      // compartilhado entre elas — ver src/services/progressService.js.
+      progressoDir:   path.join(ROOT, 'progresso'),
       imagem:         path.join(ROOT, 'informativo.png'),
       prints:         path.join(ROOT, 'output', 'prints'),
       relatorio:      path.join(ROOT, 'output', 'relatorio'),

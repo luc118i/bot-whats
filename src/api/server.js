@@ -16,55 +16,54 @@ const campanhasRoute      = require('./routes/campanhas');
 const templatesRoute      = require('./routes/templates');
 const contasRoute         = require('./routes/contas');
 const campanhasSvc        = require('../services/campanhasService');
+const progressService     = require('../services/progressService');
 const processController   = require('./processController');
 
 // Ao encerrar o bot, finaliza automaticamente a campanha ativa
 processController.onEnd(() => {
   const ativa = campanhasSvc.obterAtiva();
   if (!ativa) return;
-  const fs     = require('fs');
-  const config = require('../config');
   let stats = { total: 0, enviados: 0, pendentes: 0, falhas: 0, semNumero: 0, semWhatsapp: 0, duplicados: 0, validos: 0 };
   try {
-    if (fs.existsSync(config.paths.progresso)) {
-      const prog = JSON.parse(fs.readFileSync(config.paths.progresso, 'utf8'));
-      const { lerMotoristas } = require('../services/spreadsheetService');
-      // Recorta pelo público-alvo (base operacional) da campanha, senão o total
-      // conta a planilha inteira mesmo quando a campanha mira só uma região.
-      const filtroBaseOp = ativa.config?.filtroBaseOp || [];
-      const temFiltro = filtroBaseOp.length > 0;
-      let motoristas = [];
-      try { motoristas = lerMotoristas(); } catch (_) {}
-      const motoristasFiltrados = temFiltro ? motoristas.filter(m => filtroBaseOp.includes(m.base)) : motoristas;
-      const matriculasFiltradas = new Set(motoristasFiltrados.map(m => m.matricula));
-      const entries = (temFiltro
-        ? Object.entries(prog).filter(([matricula]) => matriculasFiltradas.has(matricula))
-        : Object.entries(prog)
-      ).map(([, v]) => v);
-      const totalPlanilha = motoristasFiltrados.length || entries.length;
-      const enviados    = entries.filter(e => e.status === 'ENVIADO').length;
-      const processando = entries.filter(e => e.status === 'PROCESSANDO').length;
-      const semNumero   = entries.filter(e => e.status === 'SEM_NUMERO').length;
-      const semWhatsapp = entries.filter(e => e.status === 'SEM_WHATSAPP').length;
-      const duplicados  = entries.filter(e => e.status === 'DUPLICADO').length;
-      const falhas      = entries.filter(e => e.status === 'FALHOU').length;
-      const pendProg    = entries.filter(e => e.status === 'PENDENTE').length;
-      const naoTentados = Math.max(0, totalPlanilha - entries.length);
-      const validos     = totalPlanilha - semNumero - semWhatsapp - duplicados;
-      stats = {
-        total:       totalPlanilha,
-        enviados,
-        processando,
-        entregues:   enviados + processando,
-        pendentes:   pendProg + naoTentados,
-        falhas,
-        semNumero,
-        semWhatsapp,
-        duplicados,
-        validos,
-        duracaoSegundos: 0,
-      };
-    }
+    // Progresso isolado desta campanha (progresso/<id>.json) — nunca mais o
+    // arquivo global compartilhado entre campanhas.
+    const prog = progressService.carregar(ativa.id);
+    const { lerMotoristas } = require('../services/spreadsheetService');
+    // Recorta pelo público-alvo (base operacional) da campanha, senão o total
+    // conta a planilha inteira mesmo quando a campanha mira só uma região.
+    const filtroBaseOp = ativa.config?.filtroBaseOp || [];
+    const temFiltro = filtroBaseOp.length > 0;
+    let motoristas = [];
+    try { motoristas = lerMotoristas(); } catch (_) {}
+    const motoristasFiltrados = temFiltro ? motoristas.filter(m => filtroBaseOp.includes(m.base)) : motoristas;
+    const matriculasFiltradas = new Set(motoristasFiltrados.map(m => m.matricula));
+    const entries = (temFiltro
+      ? Object.entries(prog).filter(([matricula]) => matriculasFiltradas.has(matricula))
+      : Object.entries(prog)
+    ).map(([, v]) => v);
+    const totalPlanilha = motoristasFiltrados.length || entries.length;
+    const enviados    = entries.filter(e => e.status === 'ENVIADO').length;
+    const processando = entries.filter(e => e.status === 'PROCESSANDO').length;
+    const semNumero   = entries.filter(e => e.status === 'SEM_NUMERO').length;
+    const semWhatsapp = entries.filter(e => e.status === 'SEM_WHATSAPP').length;
+    const duplicados  = entries.filter(e => e.status === 'DUPLICADO').length;
+    const falhas      = entries.filter(e => e.status === 'FALHOU').length;
+    const pendProg    = entries.filter(e => e.status === 'PENDENTE').length;
+    const naoTentados = Math.max(0, totalPlanilha - entries.length);
+    const validos     = totalPlanilha - semNumero - semWhatsapp - duplicados;
+    stats = {
+      total:       totalPlanilha,
+      enviados,
+      processando,
+      entregues:   enviados + processando,
+      pendentes:   pendProg + naoTentados,
+      falhas,
+      semNumero,
+      semWhatsapp,
+      duplicados,
+      validos,
+      duracaoSegundos: 0,
+    };
   } catch (_) {}
   const inicio = ativa.iniciadoEm ? new Date(ativa.iniciadoEm) : new Date();
   stats.duracaoSegundos = Math.floor((Date.now() - inicio.getTime()) / 1000);

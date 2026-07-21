@@ -2,13 +2,11 @@
 
 const fs   = require('fs');
 const path = require('path');
+const progressService = require('./progressService');
 
-const ROOT          = path.join(__dirname, '..', '..');
-const FILE          = path.join(ROOT, 'campanhas.json');
-const SNAPSHOTS_DIR = path.join(ROOT, 'snapshots');
-const IMAGENS_DIR   = path.join(ROOT, 'campanhas_imagens');
-
-const PROGRESSO_FILE = path.join(ROOT, 'progresso.json');
+const ROOT        = path.join(__dirname, '..', '..');
+const FILE        = path.join(ROOT, 'campanhas.json');
+const IMAGENS_DIR = path.join(ROOT, 'campanhas_imagens');
 
 // Decodifica uma data URI (base64) enviada pelo wizard e salva como arquivo,
 // para o send.js poder usar essa mídia (imagem ou vídeo) no lugar da imagem padrão do sistema.
@@ -28,24 +26,6 @@ function copiarImagemCampanha(origem, novoId) {
   const destino = path.join(IMAGENS_DIR, `${novoId}${path.extname(origem)}`);
   fs.copyFileSync(origem, destino);
   return destino;
-}
-
-function salvarSnapshot(id) {
-  if (!fs.existsSync(PROGRESSO_FILE)) return;
-  if (!fs.existsSync(SNAPSHOTS_DIR)) fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true });
-  fs.copyFileSync(PROGRESSO_FILE, path.join(SNAPSHOTS_DIR, `${id}.json`));
-}
-
-// Arquiva qualquer progresso.json residual (de execução anterior/crash) antes de
-// resetar, para nunca perder dados mas também nunca herdar stats de outra campanha.
-function arquivarResiduo() {
-  if (!fs.existsSync(PROGRESSO_FILE)) return;
-  try {
-    const conteudo = fs.readFileSync(PROGRESSO_FILE, 'utf8');
-    if (!conteudo || Object.keys(JSON.parse(conteudo)).length === 0) return;
-  } catch (_) { return; }
-  if (!fs.existsSync(SNAPSHOTS_DIR)) fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true });
-  fs.copyFileSync(PROGRESSO_FILE, path.join(SNAPSHOTS_DIR, `residuo_${Date.now()}.json`));
 }
 
 // ─── Persistência ─────────────────────────────────────────────────────────────
@@ -153,11 +133,10 @@ function obterAtiva() {
 }
 
 function iniciar(id) {
-  // Isola a campanha nova do progresso.json global: arquiva qualquer resíduo
-  // (de crash ou execução anterior) e começa do zero, para não herdar stats
-  // (nem auto-finalizar) com dados de outra campanha.
-  arquivarResiduo();
-  fs.writeFileSync(PROGRESSO_FILE, '{}', 'utf8');
+  // Cada campanha tem seu próprio arquivo de progresso (progresso/<id>.json),
+  // isolado das demais — "iniciar" apenas garante que o dela comece vazio.
+  // Não há mais risco de herdar ou sobrescrever dados de outra campanha.
+  progressService.salvar({}, id);
   const agora = new Date().toISOString();
   const c = atualizar(id, { status: 'executando', iniciadoEm: agora });
   if (c) adicionarEvento(id, 'inicio', 'Campanha iniciada.');
@@ -165,22 +144,15 @@ function iniciar(id) {
 }
 
 function pausar(id) {
-  // Salva o progresso.json atual vinculado a este id, para poder restaurá-lo
-  // na retomada mesmo que outra campanha rode (e sobrescreva o arquivo) nesse meio-tempo.
-  salvarSnapshot(id);
+  // Como o progresso é isolado por campanha (progresso/<id>.json), pausar é só
+  // uma troca de status — nada mais toca nesse arquivo enquanto ela está
+  // pausada, então não existe mais o que "restaurar" na retomada.
   const c = atualizar(id, { status: 'pausada' });
   if (c) adicionarEvento(id, 'pausa', 'Campanha pausada pelo usuário.');
   return c;
 }
 
 function retomar(id) {
-  // Restaura o progresso salvo no momento da pausa — necessário caso outra
-  // campanha tenha sido iniciada (e resetado o progresso.json) enquanto esta
-  // estava pausada, senão a retomada reinicia do zero.
-  const snapshotPath = path.join(SNAPSHOTS_DIR, `${id}.json`);
-  if (fs.existsSync(snapshotPath)) {
-    fs.copyFileSync(snapshotPath, PROGRESSO_FILE);
-  }
   const c = atualizar(id, { status: 'executando' });
   if (c) adicionarEvento(id, 'retomada', 'Campanha retomada.');
   return c;
@@ -188,20 +160,14 @@ function retomar(id) {
 
 function cancelar(id) {
   const c = atualizar(id, { status: 'cancelada', finalizadoEm: new Date().toISOString() });
-  if (c) {
-    adicionarEvento(id, 'cancelamento', 'Campanha cancelada pelo usuário.');
-    salvarSnapshot(id);
-  }
+  if (c) adicionarEvento(id, 'cancelamento', 'Campanha cancelada pelo usuário.');
   return c;
 }
 
 function finalizar(id, stats) {
   const agora = new Date().toISOString();
   const c = atualizar(id, { status: 'finalizada', finalizadoEm: agora, stats });
-  if (c) {
-    adicionarEvento(id, 'conclusao', `Campanha finalizada. ${stats.enviados} mensagens enviadas.`);
-    salvarSnapshot(id);
-  }
+  if (c) adicionarEvento(id, 'conclusao', `Campanha finalizada. ${stats.enviados} mensagens enviadas.`);
   return c;
 }
 

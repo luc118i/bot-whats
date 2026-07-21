@@ -1,11 +1,12 @@
 'use strict';
 
-const { run, stop, getStatus, addSseClient, broadcast } = require('../processController');
+const { run, runInProcess, stop, getStatus, addSseClient, broadcast } = require('../processController');
 const { getClientConectado } = require('./contas');
 const { lerContatosCompletos } = require('../../services/spreadsheetService');
 const { montarMensagem } = require('../../utils/message');
 const { MessageMedia } = require('whatsapp-web.js');
 const { microPausa } = require('../../utils/delay');
+const { executarCampanha } = require('../../bot/campaign');
 const config = require('../../config');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -47,10 +48,16 @@ function spawnAvulso(args, timeoutMs = 90_000) {
 }
 
 const SCRIPTS = {
-  send:          ['scripts/send.js'],
-  'send-dual':   ['scripts/send.js', '2'],
   retake:        ['scripts/retakeScreenshots.js'],
   contacts:      ['scripts/generateContacts.js'],
+};
+
+// Envio de campanha roda no próprio processo (não como script spawnado), para
+// poder reaproveitar sessões WhatsApp já conectadas em memória — ver comentário
+// em runInProcess() no processController.
+const CAMPANHA_CONTAS = {
+  send:        1,
+  'send-dual': 2,
 };
 
 function handler(req, res) {
@@ -80,6 +87,17 @@ function handler(req, res) {
   const matchRun = url.match(/^\/api\/run\/(.+)$/);
   if (matchRun && req.method === 'POST') {
     const cmd = matchRun[1];
+
+    if (CAMPANHA_CONTAS[cmd] !== undefined) {
+      const totalContas = CAMPANHA_CONTAS[cmd];
+      const result = runInProcess(cmd, ({ log, cancelToken }) =>
+        executarCampanha({ totalContas, log, cancelToken })
+      );
+      res.writeHead(result.ok ? 200 : 409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return true;
+    }
+
     const args = SCRIPTS[cmd];
     if (!args) {
       res.writeHead(400, { 'Content-Type': 'application/json' });

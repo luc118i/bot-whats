@@ -4,7 +4,9 @@ const { parse } = require('url');
 const fs = require('fs');
 const path = require('path');
 const svc = require('../../services/campanhasService');
-const { run, stop, getStatus } = require('../processController');
+const progressService = require('../../services/progressService');
+const { runInProcess, stop, getStatus } = require('../processController');
+const { executarCampanha } = require('../../bot/campaign');
 const config = require('../../config');
 const { lerMotoristas } = require('../../services/spreadsheetService');
 
@@ -15,19 +17,18 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-function lerStats() {
-  try {
-    if (!fs.existsSync(config.paths.progresso)) return {};
-    return JSON.parse(fs.readFileSync(config.paths.progresso, 'utf8'));
-  } catch (_) { return {}; }
+// Sem campanhaId, cai no arquivo legado global (progresso.json) — usado pela
+// importação de disparo pré-existente em /api/campanhas/importar-progresso.
+function lerStats(campanhaId) {
+  return progressService.carregar(campanhaId);
 }
 
 // filtroBaseOp: bases operacionais selecionadas no público-alvo da campanha (ex.: ['GBSB','GGYN']).
 // Quando presente, restringe os totais/estatísticas ao mesmo recorte que o send.js usa de fato,
 // em vez de contar a planilha inteira — senão o painel mostra "310 válidos" quando a campanha
 // na verdade só mira ~107 motoristas de uma região.
-function calcularStats(filtroBaseOp) {
-  const prog = lerStats();
+function calcularStats(campanhaId, filtroBaseOp) {
+  const prog = lerStats(campanhaId);
   const temFiltro = Array.isArray(filtroBaseOp) && filtroBaseOp.length > 0;
 
   let motoristas = [];
@@ -134,6 +135,10 @@ function handler(req, res) {
         },
       });
 
+      // Copia o progresso importado para o arquivo próprio desta campanha —
+      // a partir daqui ela passa a ser dona desses dados, isolada das demais.
+      progressService.salvar(prog, campanha.id);
+
       const taxa = total > 0 ? (enviados / total) * 100 : 0
       const statusFinal = taxa >= 95 ? 'finalizada' : 'pausada'
 
@@ -176,8 +181,8 @@ function handler(req, res) {
   if (url === '/api/campanhas/ativa' && method === 'GET') {
     const ativa = svc.obterAtiva();
     if (!ativa) { json(res, 200, { ativa: null }); return true; }
-    // Injeta stats em tempo real do progresso.json, recortadas pelo público-alvo da campanha
-    const statsAtuais = calcularStats(ativa.config?.filtroBaseOp);
+    // Injeta stats em tempo real do progresso desta campanha, recortadas pelo público-alvo
+    const statsAtuais = calcularStats(ativa.id, ativa.config?.filtroBaseOp);
     const inicio = ativa.iniciadoEm ? new Date(ativa.iniciadoEm) : null;
     const duracaoSegundos = inicio ? Math.floor((Date.now() - inicio.getTime()) / 1000) : 0;
     json(res, 200, { ativa: { ...ativa, stats: { ...ativa.stats, ...statsAtuais, duracaoSegundos } } });
@@ -212,7 +217,7 @@ function handler(req, res) {
     }
 
     svc.iniciar(id);
-    const result = run('send', ['scripts/send.js']);
+    const result = runInProcess('send', ({ log, cancelToken }) => executarCampanha({ totalContas: 1, log, cancelToken }));
     if (!result.ok) { svc.cancelar(id); return json(res, 500, result); }
     json(res, 200, { ok: true });
     return true;
@@ -223,7 +228,7 @@ function handler(req, res) {
     const id = matchAction[1];
     const campanha = svc.buscar(id);
     if (!campanha) return json(res, 404, { ok: false, erro: 'Campanha não encontrada.' });
-    const stats = calcularStats(campanha.config?.filtroBaseOp);
+    const stats = calcularStats(id, campanha.config?.filtroBaseOp);
     const inicio = campanha.iniciadoEm ? new Date(campanha.iniciadoEm) : new Date();
     stats.duracaoSegundos = Math.floor((Date.now() - inicio.getTime()) / 1000);
     const c = svc.finalizar(id, stats);
@@ -234,6 +239,10 @@ function handler(req, res) {
   // POST /api/campanhas/:id/pausar
   if (matchAction && matchAction[2] === 'pausar' && method === 'POST') {
     const id = matchAction[1];
+    // stop() só sinaliza o cancelamento — o loop de envio para no próximo ponto
+    // de checagem (agora rápido, graças às esperas canceláveis em worker.js).
+    // Não há mais snapshot a tirar: o progresso desta campanha já vive isolado
+    // em progresso/<id>.json, ninguém mais escreve nele até ela ser retomada.
     stop();
     const c = svc.pausar(id);
     json(res, c ? 200 : 404, { ok: !!c });
@@ -245,7 +254,7 @@ function handler(req, res) {
     const id = matchAction[1];
     if (getStatus().running) return json(res, 409, { ok: false, erro: 'Bot já está rodando.' });
     svc.retomar(id);
-    const result = run('send', ['scripts/send.js']);
+    const result = runInProcess('send', ({ log, cancelToken }) => executarCampanha({ totalContas: 1, log, cancelToken }));
     if (!result.ok) { svc.pausar(id); return json(res, 500, result); }
     json(res, 200, { ok: true });
     return true;

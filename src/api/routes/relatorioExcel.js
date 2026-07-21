@@ -2,22 +2,13 @@
 
 const ExcelJS = require('exceljs');
 const fs      = require('fs');
-const path    = require('path');
 const config  = require('../../config');
 const { lerContatosCompletos } = require('../../services/spreadsheetService');
-
-const ROOT          = path.join(__dirname, '..', '..', '..');
-const SNAPSHOTS_DIR = path.join(ROOT, 'snapshots');
+const progressService = require('../../services/progressService');
 
 function lerProgresso(campanhaId) {
   try {
-    let p = config.paths.progresso;
-    if (campanhaId) {
-      const snap = path.join(SNAPSHOTS_DIR, `${campanhaId}.json`);
-      if (fs.existsSync(snap)) p = snap;
-    }
-    if (!fs.existsSync(p)) return {};
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
+    return progressService.carregar(campanhaId);
   } catch (_) { return {}; }
 }
 

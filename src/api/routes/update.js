@@ -1,9 +1,8 @@
 'use strict';
 
 const { atualizarNumeros } = require('../../services/spreadsheetService');
-const config = require('../../config');
-
-const PROGRESSO = config.paths.progresso;
+const campanhasSvc = require('../../services/campanhasService');
+const progressService = require('../../services/progressService');
 
 /**
  * Handler HTTP para POST /api/atualizar.
@@ -28,7 +27,11 @@ function handler(req, res) {
   req.on('end', () => {
     try {
       const { motoristas } = JSON.parse(body);
-      const resultado = atualizarNumeros(motoristas, PROGRESSO);
+      // Limpa o SEM_NUMERO no progresso da campanha ativa, se houver, senão no
+      // arquivo legado global — evitar mexer num arquivo que ninguém mais lê.
+      const ativa = campanhasSvc.obterAtiva();
+      const arquivoProgresso = progressService.caminho(ativa?.id);
+      const resultado = atualizarNumeros(motoristas, arquivoProgresso);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, ...resultado }));
     } catch (e) {

@@ -1,44 +1,32 @@
 'use strict';
 
-const fs = require('fs');
-const { lerLinhasBrutas } = require('../../services/spreadsheetService');
-const config = require('../../config');
-
-const PROGRESSO = config.paths.progresso;
+const { lerMotoristas } = require('../../services/spreadsheetService');
+const campanhasSvc = require('../../services/campanhasService');
+const progressService = require('../../services/progressService');
 
 /**
- * Calcula estatísticas atuais de envio cruzando a planilha com o progresso.json.
+ * Calcula estatísticas atuais de envio cruzando a planilha com o progresso.
+ * Usa o progresso da campanha ativa, se houver, senão o arquivo legado global.
+ * Pendentes = motoristas ainda não tentados (não aparecem no progresso) somados
+ * aos explicitamente marcados como PENDENTE — não deve ser confundido com FALHOU.
  *
- * @returns {{ total: number, enviados: number, semNumero: number, pendentes: number }}
+ * @returns {{ total: number, enviados: number, semNumero: number, semWhatsapp: number, pendentes: number }}
  *   Objeto com contagens de motoristas por categoria.
  */
 function calcularStats() {
-  const rows = lerLinhasBrutas();
-  const header = rows[1];
-  const idxNome = header.indexOf('Nome');
-  const idxCelular = header.indexOf('Celular');
-  const idxTelefone = header.indexOf('Telefone');
+  let motoristas = [];
+  try { motoristas = lerMotoristas(); } catch (_) {}
+  const total = motoristas.length;
 
-  let total = 0;
-  let semNumero = 0;
+  const ativa = campanhasSvc.obterAtiva();
+  const entries = Object.values(progressService.carregar(ativa?.id));
 
-  for (let i = 2; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r[idxNome]) continue;
-    total++;
-    if (!r[idxCelular] && !r[idxTelefone]) semNumero++;
-  }
+  const enviados    = entries.filter((v) => v.status === 'ENVIADO').length;
+  const semNumero   = entries.filter((v) => v.status === 'SEM_NUMERO').length;
+  const semWhatsapp = entries.filter((v) => v.status === 'SEM_WHATSAPP').length;
+  const pendentes   = entries.filter((v) => v.status === 'PENDENTE').length + Math.max(0, total - entries.length);
 
-  let enviados = 0;
-  let pendentes = 0;
-
-  if (fs.existsSync(PROGRESSO)) {
-    const p = JSON.parse(fs.readFileSync(PROGRESSO, 'utf8'));
-    enviados = Object.values(p).filter((v) => v.status === 'ENVIADO').length;
-    pendentes = Object.values(p).filter((v) => v.status === 'FALHOU').length;
-  }
-
-  return { total, enviados, semNumero, pendentes };
+  return { total, enviados, semNumero, semWhatsapp, pendentes };
 }
 
 /**

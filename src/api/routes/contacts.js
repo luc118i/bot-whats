@@ -2,20 +2,8 @@
 
 const { parse } = require('url');
 const fs   = require('fs');
-const path = require('path');
 const { lerContatosCompletos, atualizarContato, criarContato } = require('../../services/spreadsheetService');
-const config = require('../../config');
-
-const ROOT          = path.join(__dirname, '..', '..', '..');
-const SNAPSHOTS_DIR = path.join(ROOT, 'snapshots');
-
-function resolverProgresso(campanhaId) {
-  if (campanhaId) {
-    const snap = path.join(SNAPSHOTS_DIR, `${campanhaId}.json`);
-    if (fs.existsSync(snap)) return snap;
-  }
-  return config.paths.progresso;
-}
+const progressService = require('../../services/progressService');
 
 const STATUS_LABEL = {
   ENVIADO:      'Enviado',
@@ -78,12 +66,8 @@ function handler(req, res) {
   const page      = Math.max(1, parseInt(qs.page)  || 1);
   const perPage   = Math.min(500, parseInt(qs.per_page) || 50);
 
-  // Carrega progresso (snapshot da campanha ou global)
-  let progresso = {};
-  const progressoPath = resolverProgresso(campanha);
-  if (fs.existsSync(progressoPath)) {
-    try { progresso = JSON.parse(fs.readFileSync(progressoPath, 'utf8')); } catch (_) {}
-  }
+  // Carrega progresso (arquivo da campanha ou global)
+  const progresso = progressService.carregar(campanha);
 
   // Merge planilha + progresso
   const contatos = lerContatosCompletos().map(m => {

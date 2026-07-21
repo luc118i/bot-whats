@@ -20,16 +20,38 @@ function aleatorio(min, max) {
 }
 
 /**
+ * Aguarda até `ms` milissegundos, mas retorna mais cedo se `cancelToken.cancelado`
+ * virar true durante a espera — checa em passos de 1s. Usado nas pausas longas
+ * (pausaLonga, respiroDuracao) para que um pedido de pausa do usuário não fique
+ * preso esperando o fim de uma espera de minutos/horas.
+ * @param {number} ms - Tempo total a aguardar em milissegundos.
+ * @param {{cancelado: boolean}} [cancelToken] - Se `cancelado` virar true, interrompe a espera.
+ * @param {number} [passo] - Intervalo de checagem em ms. Padrão: 1000.
+ * @returns {Promise<void>}
+ */
+async function sleepCancelavel(ms, cancelToken, passo = 1000) {
+  let restante = ms;
+  while (restante > 0) {
+    if (cancelToken?.cancelado) return;
+    await sleep(Math.min(passo, restante));
+    restante -= passo;
+  }
+}
+
+/**
  * Aguarda um tempo aleatório entre DELAY_MIN e DELAY_MAX e loga o progresso.
+ * A espera é cancelável: se `cancelToken.cancelado` virar true, retorna mais cedo.
  * @param {string} prefixo - Prefixo de identificação para o log (ex: "[CONTA 1]").
  * @param {number} delayMin - Delay mínimo em ms.
  * @param {number} delayMax - Delay máximo em ms.
+ * @param {(text: string) => void} [log] - Função de log. Padrão: console.log.
+ * @param {{cancelado: boolean}} [cancelToken] - Se `cancelado` virar true, interrompe a espera.
  * @returns {Promise<void>}
  */
-async function delayAleatorio(prefixo, delayMin, delayMax) {
+async function delayAleatorio(prefixo, delayMin, delayMax, log = console.log, cancelToken = null) {
   const ms = aleatorio(delayMin, delayMax);
-  console.log(`${prefixo} ⏳ Aguardando ${(ms / 1000).toFixed(1)}s...\n`);
-  await sleep(ms);
+  log(`${prefixo} ⏳ Aguardando ${(ms / 1000).toFixed(1)}s...\n`);
+  await sleepCancelavel(ms, cancelToken);
 }
 
 /**
@@ -40,4 +62,4 @@ function microPausa() {
   return sleep(aleatorio(300, 800));
 }
 
-module.exports = { sleep, aleatorio, delayAleatorio, microPausa };
+module.exports = { sleep, aleatorio, delayAleatorio, microPausa, sleepCancelavel };

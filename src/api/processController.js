@@ -6,8 +6,10 @@ const logService = require('../services/logService');
 
 const ROOT = path.join(__dirname, '..', '..');
 
-// Processo ativo no momento
+// Processo ativo no momento (modo spawn — child_process)
 let activeProcess = null;
+// Tarefa ativa no momento (modo in-process — reaproveita sessão já conectada)
+let activeCancelToken = null;
 let activeCommand = null;
 
 // Clientes SSE conectados para streaming de log
@@ -32,13 +34,13 @@ function addSseClient(res) {
 
 function getStatus() {
   return {
-    running: activeProcess !== null,
+    running: activeProcess !== null || activeCancelToken !== null,
     command: activeCommand,
   };
 }
 
 function run(command, args) {
-  if (activeProcess) {
+  if (activeProcess || activeCancelToken) {
     return { ok: false, erro: 'Já existe um processo rodando. Pare-o antes de iniciar outro.' };
   }
 
@@ -83,14 +85,61 @@ function run(command, args) {
   return { ok: true };
 }
 
-function stop() {
-  if (!activeProcess) return { ok: false, erro: 'Nenhum processo rodando.' };
-  activeProcess.kill('SIGTERM');
-  broadcast({ type: 'log', text: '⛔ Processo encerrado pelo usuário.' });
-  broadcast({ type: 'end', code: null });
-  activeProcess = null;
-  activeCommand = null;
+/**
+ * Roda uma tarefa assíncrona dentro do próprio processo do servidor, em vez de
+ * abrir um processo `node` novo. Usado pelo envio de campanha para poder
+ * reaproveitar sessões WhatsApp já conectadas em memória (ver src/bot/campaign.js)
+ * — abrir um processo `node` separado sempre cria um Chromium novo apontando para
+ * a mesma pasta de sessão, o que causa o erro "browser already running" quando a
+ * conta já está conectada pelo painel.
+ *
+ * @param {string} command - Nome do comando (para exibição/status).
+ * @param {(ctx: { log: (text: string) => void, cancelToken: { cancelado: boolean } }) => Promise<void>} taskFn
+ */
+function runInProcess(command, taskFn) {
+  if (activeProcess || activeCancelToken) {
+    return { ok: false, erro: 'Já existe um processo rodando. Pare-o antes de iniciar outro.' };
+  }
+
+  activeCommand = command;
+  broadcast({ type: 'start', command });
+
+  const log = (text) => broadcast({ type: 'log', text: String(text) });
+  const cancelToken = { cancelado: false };
+  activeCancelToken = cancelToken;
+
+  const finalizar = (code) => {
+    broadcast({ type: 'end', code });
+    activeCommand = null;
+    activeCancelToken = null;
+    _onEnd.forEach(cb => { try { cb(code); } catch (_) {} });
+  };
+
+  taskFn({ log, cancelToken })
+    .then(() => finalizar(0))
+    .catch((err) => {
+      log(`❌ Erro: ${err.message}`);
+      finalizar(1);
+    });
+
   return { ok: true };
 }
 
-module.exports = { run, stop, getStatus, addSseClient, onEnd, broadcast };
+function stop() {
+  if (activeProcess) {
+    activeProcess.kill('SIGTERM');
+    broadcast({ type: 'log', text: '⛔ Processo encerrado pelo usuário.' });
+    broadcast({ type: 'end', code: null });
+    activeProcess = null;
+    activeCommand = null;
+    return { ok: true };
+  }
+  if (activeCancelToken) {
+    activeCancelToken.cancelado = true;
+    broadcast({ type: 'log', text: '⛔ Encerrando após o envio atual...' });
+    return { ok: true };
+  }
+  return { ok: false, erro: 'Nenhum processo rodando.' };
+}
+
+module.exports = { run, runInProcess, stop, getStatus, addSseClient, onEnd, broadcast };

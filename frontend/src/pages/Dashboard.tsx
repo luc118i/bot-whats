@@ -5,6 +5,7 @@ import { useStats } from '../hooks/useStats'
 import { useBotStatus } from '../hooks/useBotStatus'
 import { useLogs } from '../hooks/useLogs'
 import { useCampanha, type CampanhaResumo } from '../context/CampanhaContext'
+import type { Stats } from '../types'
 import { KpiCards } from '../components/dashboard/KpiCards'
 import { ActiveCampaignCard, PausedCampaignCard, LastCampaignCard } from '../components/dashboard/CampaignCard'
 import { QuickActions } from '../components/dashboard/QuickActions'
@@ -124,6 +125,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const campanhaAtiva: CampanhaResumo | null = ativaData?.ativa ?? null
   const ultimaCampanha = campanhas[0] ?? null
 
+  // Stats do card de progresso da campanha: usa os stats já filtrados pela base
+  // operacional da campanha (vindos de /api/campanhas/ativa), não os globais de
+  // /api/stats — senão o card mistura "337 total da planilha inteira" com o
+  // progresso de uma campanha que na verdade mira só um subconjunto (ex: 122).
+  const statsCampanha: Stats | undefined = campanhaAtiva ? {
+    total:       campanhaAtiva.stats.total,
+    enviados:    campanhaAtiva.stats.enviados,
+    pendentes:   campanhaAtiva.stats.pendentes,
+    semNumero:   campanhaAtiva.stats.semNumero ?? 0,
+    semWhatsapp: campanhaAtiva.stats.semWhatsapp ?? 0,
+  } : undefined
+
   // Determina estado do dashboard
   const isRunning = botStatus?.running ?? false
   const dashState =
@@ -187,12 +200,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         <AnimatePresence mode="wait">
           {dashState === 'ativa' && campanhaAtiva && (
             <motion.div key="card-ativa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ActiveCampaignCard campanha={campanhaAtiva} stats={stats} botStatus={botStatus!} />
+              <ActiveCampaignCard campanha={campanhaAtiva} stats={statsCampanha} botStatus={botStatus!} />
             </motion.div>
           )}
           {dashState === 'pausada' && campanhaAtiva && (
             <motion.div key="card-pausada" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <PausedCampaignCard campanha={campanhaAtiva} stats={stats} />
+              <PausedCampaignCard campanha={campanhaAtiva} stats={statsCampanha} />
             </motion.div>
           )}
           {dashState === 'idle' && (
