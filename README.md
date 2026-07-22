@@ -1,27 +1,34 @@
 # Catedral Bot — Painel de Campanhas WhatsApp
 
-Plataforma de disparo em massa via WhatsApp para a Viação Catedral, com dashboard web para criar, configurar e acompanhar **campanhas** (não apenas o informativo de tempo de parada — qualquer campanha com mensagem, imagem e público-alvo próprios).
+Plataforma de disparo em massa via WhatsApp para a Viação Catedral: um dashboard web (React) para criar, configurar, pausar/retomar e acompanhar **campanhas** de comunicação com motoristas, e um backend Node.js que orquestra o envio de fato via `whatsapp-web.js`, com isolamento de progresso por campanha, controles anti-bloqueio configuráveis e relatórios (PDF/Excel) ao final.
+
+Não é um script de disparo único — é um sistema multi-campanha: várias campanhas independentes podem coexistir (rascunho, agendada, executando, pausada, finalizada), cada uma com seu próprio público-alvo, mensagens, imagem, delay e histórico de progresso, sem interferir umas nas outras.
 
 ---
 
-## Objetivo
+## Destaques técnicos
 
-Permitir a criação e edição de campanhas de comunicação com motoristas: definir 5 variações de mensagem personalizada (nome e matrícula), imagem opcional, filtro de público-alvo (base operacional, status de envio), delay entre envios e agendamento — tudo pelo dashboard, sem editar código. O bot então envia via WhatsApp Web, registra o progresso por campanha, tira prints de confirmação e gera relatório PDF.
+Pontos do projeto que valem a leitura do código, não só da lista de features:
 
-Cada mensagem enviada combina: o modelo da campanha (ou um dos 5 modelos padrão do sistema) + um CTA + um rodapé, sorteados de pools de 5 variações cada (configuráveis em "Configurações"), para reduzir padrões repetitivos de envio em massa.
+- **Progresso isolado por campanha** (`progresso/<id>.json`, um arquivo por campanha) em vez de um único arquivo de estado global. Isso eliminou uma classe inteira de bugs de concorrência: antes, pausar uma campanha enquanto outra rodava (ou um kill abrupto do processo) podia fazer o sistema "esquecer" quem já tinha recebido mensagem e reenviar duplicado.
+- **Migração automática e silenciosa** de campanhas criadas antes dessa mudança de esquema: na primeira leitura, se não existe progresso no formato novo mas existe no formato antigo, o sistema migra sozinho — sem exigir passo manual nem quebrar campanhas em andamento.
+- **Pausas longas canceláveis**: esperas de minutos/horas (`respiro`) são implementadas com checagem periódica de cancelamento em vez de um único `setTimeout` bloqueante — pedir para pausar o bot não fica preso esperando o fim de uma espera de 1 hora.
+- **Variação temporal (±20%) e duas regras de respiro independentes** — uma por quantidade de envios, outra por tempo de relógio (o que disparar primeiro vale). Cadências e durações sempre idênticas criam um padrão fácil de detectar; aqui nada é um número fixo repetido.
+- **Reaproveitamento de sessão autenticada**: o envio roda no próprio processo do servidor (não como subprocesso) para reutilizar uma sessão WhatsApp já conectada no painel, evitando abrir um segundo Chromium na mesma pasta de perfil (erro clássico do Puppeteer).
+- **Analytics agregado sob demanda**: endpoint que varre todos os arquivos de progresso de todas as campanhas e agrega envios reais em buckets de tempo com granularidade adaptativa (1min → 1 dia, conforme o período pedido), alimentando um gráfico com zoom (scroll do mouse) e navegação por arraste — sem depender de um banco de séries temporais.
+- **Log ao vivo persistente**: o painel reconecta ao stream de eventos (SSE) e hidrata o histórico salvo em disco ao carregar a página, então um F5 não apaga o que já aconteceu.
 
 ---
 
 ## Tecnologias
 
-| Tecnologia | Uso |
+| Camada | Tecnologia |
 |---|---|
-| Node.js | Runtime principal (backend + bot) |
-| whatsapp-web.js | Automação do WhatsApp via Puppeteer |
-| React + Vite + TypeScript | Dashboard web (`frontend/`) |
-| xlsx | Leitura e escrita de planilhas Excel |
-| pdfkit | Geração do relatório PDF |
-| qrcode-terminal | Exibição do QR Code no terminal |
+| Backend / bot | Node.js, `whatsapp-web.js` (Puppeteer), servidor HTTP nativo (sem framework) |
+| Dashboard | React 18 + TypeScript + Vite, TanStack Query, Recharts, Tailwind CSS, Framer Motion |
+| Dados/planilha | `xlsx` / `exceljs` |
+| Relatórios | `pdfkit` (PDF), `exceljs` (Excel) |
+| Autenticação WhatsApp | QR Code via `qrcode-terminal` / `qrcode` |
 
 ---
 
@@ -51,17 +58,17 @@ cd frontend && npm install
 ### Dashboard web (criar e gerenciar campanhas)
 
 ```bash
-npm run dev        # backend/API na porta 3000
+npm run dev                  # backend/API na porta 3000
 cd frontend && npm run dev   # dashboard na porta 5173
 ```
 
-Pelo dashboard: criar, **editar** (a qualquer momento, em qualquer status), duplicar, iniciar, pausar, retomar, cancelar campanhas e acompanhar estatísticas em tempo real. Editar reabre o mesmo wizard pré-preenchido com os dados atuais da campanha.
+Telas do dashboard: **Campanhas** (criar, editar, duplicar, iniciar, pausar, retomar, cancelar), **Envios**, **Contatos**, **Templates** (variações de mensagem/CTA/rodapé), **Relatórios**, **Logs** (stream ao vivo + histórico) e **Configurações** (delays, pausas, respiro por quantidade e por tempo, limite por execução, contas WhatsApp vinculadas).
 
 ### Envio via linha de comando (sem dashboard)
 
 ```bash
 npm run send        # 1 conta
-npm run send:dual    # 2 contas em paralelo
+npm run send:dual   # 2 contas em paralelo
 ```
 
 Um navegador abrirá por conta **apenas na primeira vez** (para escanear o QR Code) — depois que a sessão é salva em `.wwebjs_auth/`, as próximas execuções rodam com o Chromium oculto (headless) automaticamente. Se houver uma campanha ativa no dashboard, o envio usa os modelos de mensagem, imagem, delay e filtros configurados nela; caso contrário, usa o padrão do sistema.
@@ -86,39 +93,37 @@ npm run contacts
 INFORMATIVO DE TEMPO DE PARADA/
 ├── src/
 │   ├── config/index.js          ← Constantes e caminhos centralizados
-│   ├── bot/                      ← Cliente WhatsApp, envio, print, worker
-│   ├── services/                 ← Campanhas, progresso, planilha, templates, relatório
-│   ├── utils/                    ← delay, mensagem (padrão + customizada por campanha), telefone
+│   ├── bot/                      ← Cliente WhatsApp, envio, print, worker, orquestração de campanha
+│   ├── services/                 ← Campanhas, progresso (por campanha), planilha, templates, relatório
+│   ├── utils/                    ← delay (com cancelamento/variação), mensagem, telefone
 │   └── api/
 │       ├── server.js             ← Servidor HTTP (porta 3000)
-│       └── routes/               ← campanhas, contatos, config, contas, stats, etc.
+│       └── routes/               ← campanhas, contatos, config, contas, atividade, logs, etc.
 ├── frontend/                     ← Dashboard React (Vite + TypeScript)
-├── web/                          ← Interface estática legada (servida por src/api/server.js)
 ├── scripts/
-│   ├── send.js                   ← Ponto de entrada do bot de envio
+│   ├── send.js                   ← Ponto de entrada do bot de envio (CLI)
 │   ├── retakeScreenshots.js
 │   └── generateContacts.js
 ├── docs/                         ← Diagramas de arquitetura e changelog
 ├── output/                       ← prints/, relatorio/, contatos/ (gerados, não versionados)
+├── progresso/                    ← Progresso de envio por campanha, um arquivo por id (gerado, não versionado)
 ├── campanhas_imagens/            ← Imagens customizadas por campanha (geradas, não versionadas)
-├── snapshots/                    ← Snapshot do progresso ao finalizar/cancelar cada campanha
 ├── campanhas.json                ← Estado das campanhas (gerado, não versionado)
-├── progresso.json                ← Estado de envio da campanha ativa (gerado, não versionado)
 └── package.json
 ```
 
-> Arquivos com dados pessoais (planilha de motoristas, `.vcf`), estado de execução (`campanhas.json`, `progresso.json`, `snapshots/`, `output/`) e a sessão autenticada do WhatsApp (`.wwebjs_auth/`) ficam fora do controle de versão — veja `.gitignore`.
+> Arquivos com dados pessoais (planilha de motoristas, `.vcf`), estado de execução (`campanhas.json`, `progresso/`, `output/`) e a sessão autenticada do WhatsApp (`.wwebjs_auth/`) ficam fora do controle de versão — veja `.gitignore`.
 
 ---
 
 ## Fluxo Geral de uma Campanha
 
-1. Criação (ou edição, a qualquer momento) pelo dashboard: nome, 5 modelos de mensagem, imagem opcional, filtros de público (base operacional / status), delay entre envios e agendamento.
-2. Ao iniciar, o progresso é isolado — nenhum estado de campanhas anteriores é herdado (qualquer resíduo é arquivado antes do reset).
-3. `send.js` lê a campanha ativa, filtra motoristas pelo público-alvo configurado, monta a mensagem a partir dos modelos da campanha + CTA + rodapé (ou do padrão do sistema, se nenhum modelo foi definido) e envia, respeitando o delay configurado na campanha (ou o padrão global, se não definido).
-4. Cada envio: marca `PROCESSANDO` → verifica WhatsApp → envia imagem + legenda → tira print → marca `ENVIADO`.
-5. Pausas automáticas para reduzir risco de bloqueio (a cada N envios / após M envios, um "respiro" maior).
-6. Ao finalizar ou cancelar, o progresso é arquivado em `snapshots/{id}.json` e o relatório PDF é gerado.
+1. Criação (ou edição, a qualquer momento) pelo dashboard: nome, modelos de mensagem, imagem opcional, filtros de público (base operacional / status), delay entre envios e agendamento.
+2. Ao iniciar, a campanha ganha seu próprio arquivo de progresso — isolado, sem herdar nem contaminar o estado de nenhuma outra campanha.
+3. O bot lê a campanha ativa, filtra motoristas pelo público-alvo configurado, monta a mensagem a partir dos modelos da campanha + CTA + rodapé (sorteados de pools de variações, para reduzir padrões repetitivos) e envia, respeitando o delay configurado na campanha (ou o padrão global).
+4. Cada envio: marca `PROCESSANDO` → verifica WhatsApp → envia imagem + legenda → tira print → marca `ENVIADO`. Um registro que fica travado em `PROCESSANDO` (por crash/encerramento abrupto) é retentado automaticamente na próxima execução, em vez de ficar órfão para sempre.
+5. Pausas automáticas para reduzir risco de bloqueio: por quantidade de envios (curta e longa) e por tempo de relógio, todas com variação de ±20% e canceláveis a qualquer momento.
+6. Ao finalizar ou cancelar, o relatório (PDF e/ou Excel) é gerado a partir do progresso da campanha.
 
 > ⚠️ Mesmo com essas precauções, `whatsapp-web.js` é automação não-oficial — o número pode ser suspenso pelo WhatsApp a qualquer momento, independente da configuração de delay. Para uso recorrente em produção, considere migrar para a [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) oficial.
 

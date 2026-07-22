@@ -4,124 +4,118 @@
 
 ```mermaid
 graph TB
-  subgraph Scripts
-    S1[send.js]
-    S2[retakeScreenshots.js]
-    S3[generateContacts.js]
+  subgraph Frontend["Dashboard (React + Vite)"]
+    UI[Campanhas / Dashboard / Logs / Contatos / Relatórios / Configurações]
   end
-  subgraph Bot Core
-    W[worker.js]
+
+  subgraph API["src/api"]
+    SV[server.js]
+    RC[routes/campanhas.js]
+    RCT[routes/contacts.js]
+    RCF[routes/config.js]
+    RA[routes/atividade.js]
+    RL[routes/logsHistory.js]
+    RCN[routes/contas.js]
+    PC[processController.js]
+  end
+
+  subgraph Bot["src/bot"]
+    CAMP[campaign.js — orquestra uma campanha]
+    W[worker.js — loop de envio de uma conta]
     SN[sender.js]
     SC[screenshot.js]
     CL[client.js]
   end
-  subgraph Services
-    SP[spreadsheetService]
-    PR[progressService]
-    RE[reportService]
-  end
-  subgraph Utils
-    DL[delay.js]
-    PH[phone.js]
-    MS[message.js]
-  end
-  subgraph API
-    SV[server.js]
-    R1[routes/stats]
-    R2[routes/update]
-    R3[routes/download]
-  end
-  subgraph Web
-    UI[web/index.html]
+
+  subgraph Services["src/services"]
+    CS[campanhasService.js — CRUD + ciclo de vida]
+    PR["progressService.js — progresso por campanha"]
+    SP[spreadsheetService.js]
+    RE[reportService.js — PDF]
+    LS[logService.js — histórico de eventos]
+    TP[templatesService.js]
   end
 
-  S1 --> W
+  UI -->|REST + SSE| SV
+  SV --> RC & RCT & RCF & RA & RL & RCN
+  RC --> CS
+  RC -->|inicia/retoma via processController| PC
+  PC -->|executa em memória, reaproveita sessão| CAMP
+  CAMP --> W
+  CAMP --> CS
+  CAMP --> PR
+  CAMP --> SP
+  CAMP --> RE
   W --> SN
   W --> SC
   W --> CL
   W --> PR
-  SN --> MS
-  SN --> DL
-  SC --> DL
-  S1 --> SP
-  S1 --> PR
-  S1 --> RE
-  S2 --> PR
-  S3 --> SP
-  UI --> SV
-  SV --> R1 & R2 & R3
-  R1 --> SP & PR
-  R2 --> SP
-  R3 --> config
+  RCT --> PR
+  RA --> PR
+  RL --> LS
+  PC -.broadcast eventos.-> SV
 ```
 
-## 2. Fluxo do Bot (send.js)
+**Ponto-chave:** iniciar/retomar uma campanha não abre um processo `node` separado — `runInProcess()` (`processController.js`) roda `executarCampanha()` dentro do próprio processo do servidor, para poder reaproveitar uma sessão WhatsApp já autenticada em memória (ex: conectada via painel em Configurações). Abrir um subprocesso novo criaria um segundo Chromium apontando pra mesma pasta de sessão, o que o Puppeteer rejeita.
+
+## 2. Fluxo de uma Campanha (`campaign.js` → `worker.js`)
 
 ```mermaid
 flowchart TD
-  A[Iniciar scripts/send.js] --> B[Ler planilha via spreadsheetService]
-  B --> C[Filtrar desligados]
-  C --> D[Filtrar sem número → marcar SEM_NUMERO]
-  D --> E[Remover duplicatas por celular → marcar DUPLICADO]
-  E --> F[Filtrar já enviados / PROCESSANDO do progresso.json]
+  A[POST /campanhas/:id/iniciar ou /retomar] --> B[campaign.js: lê planilha + progresso da campanha]
+  B --> C[Filtra por base operacional / status configurados]
+  C --> D[Filtra sem número → marca SEM_NUMERO]
+  D --> E[Remove duplicatas por celular → marca DUPLICADO]
+  E --> F["Filtra já enviados / travados em PROCESSANDO"]
   F --> G{Há pendentes?}
-  G -- Não --> H[Fim — todos enviados]
-  G -- Sim --> I[Dividir lista entre N contas]
-  I --> J[Iniciar clientes WhatsApp via client.js]
-  J --> K[Exibir QR Code → usuário escaneia]
-  K --> L[Para cada motorista na lista]
-  L --> M[Marcar PROCESSANDO no progresso.json]
-  M --> N[getNumberId — verificar WhatsApp]
-  N -- Inválido --> O[Marcar SEM_WHATSAPP]
-  N -- Válido --> P[sendMessage com imagem + legenda]
-  P --> Q[tirarPrint do painel de chat]
-  Q --> R[Marcar ENVIADO + caminho do print]
-  R --> S{A cada 20 enviados?}
-  S -- Sim --> T[Pausa longa de 5 minutos]
-  S -- Não --> U[Delay aleatório 1–50s]
-  T & U --> L
-  O --> L
-  L -- Fim da lista --> V[Encerrar cliente WhatsApp]
-  V --> W2[Aguardar todas as contas]
-  W2 --> X[gerarRelatorio — PDF em output/relatorio]
-  X --> Y[Exibir resumo final]
+  G -- Não --> H[Fim — gera relatório]
+  G -- Sim --> I[Divide lista entre N contas]
+  I --> J[worker.js processa cada motorista]
+  J --> K[Marca PROCESSANDO]
+  K --> L[getNumberId — verifica WhatsApp]
+  L -- Inválido --> M[Marca SEM_WHATSAPP]
+  L -- Válido --> N[Envia imagem + legenda sorteada]
+  N --> O[Tira print de confirmação]
+  O --> P[Marca ENVIADO]
+  P --> Q{Limiar de pausa/respiro atingido?}
+  Q -- "Por quantidade (±20%)" --> R[Pausa curta ou respiro longo]
+  Q -- "Por tempo de relógio (±20%)" --> R
+  Q -- Não --> S[Delay aleatório entre envios]
+  R --> T[Cancelável a qualquer momento]
+  T & S --> J
+  M --> J
+  J -- Fim da lista --> U[gerarRelatorio — PDF/Excel]
 ```
 
-## 3. Fluxo da Interface Web
+Cada registro de progresso vive em `progresso/<campanhaId>.json` — isolado por campanha. Isso elimina a necessidade de "resetar" um arquivo global entre campanhas e evita que pausar uma campanha enquanto outra roda (ou um encerramento abrupto) corrompa o progresso de qualquer uma delas.
+
+## 3. Painel em Tempo Real (SSE + Analytics)
 
 ```mermaid
 sequenceDiagram
   actor U as Usuário
-  participant W as Web (index.html)
+  participant D as Dashboard (React)
   participant S as API Server
-  participant SP as SpreadsheetService
-  participant PR as ProgressService
+  participant PC as processController
+  participant PR as progressService
 
-  U->>W: Acessa localhost:3000
-  W->>S: GET /api/stats
-  S->>PR: carregar()
-  PR-->>S: progresso.json
-  S->>SP: lerLinhasBrutas()
-  SP-->>S: linhas da planilha
-  S-->>W: { total, enviados, semNumero, pendentes }
-  W-->>U: Exibe dashboard com estatísticas
+  U->>D: Abre o Dashboard
+  D->>S: GET /api/logs (Server-Sent Events)
+  S-->>D: stream de eventos (start/log/end) em tempo real
+  D->>S: GET /api/logs/history
+  S-->>D: histórico persistido — hidrata o log ao vivo após F5
 
-  U->>W: Arrasta arquivo xlsx/csv
-  W->>W: Lê e valida colunas com xlsx.js
-  W-->>U: Exibe tabela de prévia com status por linha
+  U->>D: Clica em "Iniciar campanha"
+  D->>S: POST /api/campanhas/:id/iniciar
+  S->>PC: runInProcess() — executa a campanha no próprio processo
+  PC-->>D: eventos via SSE conforme cada envio acontece
 
-  U->>W: Clica em "Atualizar Lista"
-  W->>S: POST /api/atualizar { motoristas: [...] }
-  S->>SP: atualizarNumeros(motoristas, progresso)
-  SP->>SP: Reescreve planilha xlsx
-  SP->>PR: Remove SEM_NUMERO do progresso.json
-  S-->>W: { ok: true, atualizados: N, naoEncontrados: M }
-  W-->>U: Exibe resultado e atualiza dashboard
-
-  U->>W: Clica em "Baixar planilha modelo"
-  W->>S: GET /baixar-modelo
-  S-->>W: Stream do arquivo motoristas_sem_numero.xlsx
-  W-->>U: Download do arquivo
+  loop a cada 20s
+    D->>S: GET /api/stats/atividade?horas=N
+    S->>PR: varre progresso de todas as campanhas
+    S-->>D: envios agregados em buckets (granularidade adaptativa)
+    D-->>U: gráfico com zoom (scroll) e navegação (arraste)
+  end
 ```
 
 ## 4. Estrutura de Diretórios
@@ -130,45 +124,40 @@ sequenceDiagram
 INFORMATIVO DE TEMPO DE PARADA/
 ├── src/
 │   ├── config/
-│   │   └── index.js          ← Todas as constantes centralizadas
+│   │   └── index.js              ← Constantes e caminhos centralizados
 │   ├── bot/
-│   │   ├── client.js         ← Fábrica do cliente WhatsApp
-│   │   ├── screenshot.js     ← Captura de tela do chat
-│   │   ├── sender.js         ← Envio de mensagem + verificação
-│   │   └── worker.js         ← Loop principal de uma conta
+│   │   ├── campaign.js           ← Orquestra o envio de uma campanha inteira
+│   │   ├── worker.js             ← Loop de envio de uma conta (pausas, respiro, delay)
+│   │   ├── client.js             ← Fábrica do cliente WhatsApp
+│   │   ├── screenshot.js         ← Captura de tela do chat
+│   │   └── sender.js             ← Envio de mensagem + verificação de número
 │   ├── services/
-│   │   ├── progressService.js   ← CRUD do progresso.json
-│   │   ├── reportService.js     ← Geração de PDF
-│   │   └── spreadsheetService.js← Leitura/escrita da planilha
+│   │   ├── campanhasService.js   ← CRUD e ciclo de vida das campanhas
+│   │   ├── progressService.js    ← Progresso isolado por campanha
+│   │   ├── reportService.js      ← Geração de PDF
+│   │   ├── spreadsheetService.js ← Leitura/escrita da planilha
+│   │   ├── logService.js         ← Histórico de eventos (para o painel de Logs)
+│   │   └── templatesService.js   ← Pools de CTA/rodapé
 │   ├── utils/
-│   │   ├── delay.js          ← sleep, aleatorio, delayAleatorio
-│   │   ├── message.js        ← Texto da mensagem WhatsApp
-│   │   └── phone.js          ← Normalização de números
+│   │   ├── delay.js              ← sleep cancelável, variação ±20%, delay aleatório
+│   │   ├── message.js            ← Montagem da mensagem (padrão + customizada por campanha)
+│   │   └── phone.js              ← Normalização de números
 │   └── api/
-│       ├── server.js         ← Servidor HTTP
-│       └── routes/
-│           ├── stats.js      ← GET /api/stats
-│           ├── update.js     ← POST /api/atualizar
-│           └── download.js   ← GET /baixar-modelo
-├── web/
-│   └── index.html            ← Interface web completa (SPA)
+│       ├── server.js             ← Servidor HTTP + SSE
+│       ├── processController.js  ← Execução em memória / subprocesso + eventos
+│       └── routes/                ← campanhas, contatos, config, contas, atividade, logs, relatório
+├── frontend/                     ← Dashboard React (Vite + TypeScript + TanStack Query + Recharts)
 ├── scripts/
-│   ├── send.js               ← Ponto de entrada do bot
-│   ├── retakeScreenshots.js  ← Retirar prints pendentes
-│   └── generateContacts.js  ← Gerar VCF de contatos
+│   ├── send.js                   ← Ponto de entrada do bot (CLI)
+│   ├── retakeScreenshots.js
+│   └── generateContacts.js
 ├── docs/
-│   ├── ARCHITECTURE.md       ← Este arquivo
-│   ├── API.md                ← Documentação das rotas HTTP
+│   ├── ARCHITECTURE.md           ← Este arquivo
+│   ├── API.md                    ← Documentação das rotas HTTP
 │   └── CHANGELOG-REFATORACAO.md
-├── output/
-│   ├── prints/               ← Screenshots de confirmação
-│   ├── relatorio/            ← PDFs de relatório
-│   └── contatos/             ← Arquivos VCF
-├── bot/                      ← Código legado (mantido para referência)
-├── interface/                ← Interface legada (mantida para referência)
-├── package.json
-├── .eslintrc.js
-├── .prettierrc
-├── .editorconfig
-└── README.md
+├── output/                       ← prints/, relatorio/, contatos/ (gerados)
+├── progresso/                    ← Um arquivo de progresso por campanha (gerado)
+├── campanhas_imagens/            ← Imagens customizadas por campanha (geradas)
+├── campanhas.json                ← Estado das campanhas (gerado)
+└── package.json
 ```
