@@ -16,6 +16,12 @@ const DEFAULTS = {
     limitePorConta: 0,
     respiroCada:    50,
     respiroDuracao: 60 * 60000,
+    // Respiro por tempo de relógio — regra universal independente da
+    // quantidade enviada (que varia de duração real conforme o delay de cada
+    // campanha). Dispara o que vier primeiro entre este e o respiroCada/
+    // pausaACada por quantidade.
+    respiroTempoIntervalo: 60 * 60000,
+    respiroTempoDuracao:   30 * 60000,
   },
   server: {
     porta: 3000,

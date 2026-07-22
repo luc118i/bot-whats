@@ -17,6 +17,8 @@ interface BotConfig {
   respiroCada:    number;
   respiroDuracao: number;
   limitePorConta: number;
+  respiroTempoIntervalo: number;
+  respiroTempoDuracao:   number;
 }
 
 interface ConfigResponse {
@@ -155,6 +157,9 @@ export default function Configuracoes() {
   const [respiroCada,  setRespiroCada]  = useState(50);
   const [respiroDurM,  setRespiroDurM]  = useState(60);
   const [limite,       setLimite]       = useState(0);
+  const [respiroTempoIntervaloM, setRespiroTempoIntervaloM] = useState(60);
+  const [respiroTempoDuracaoM,   setRespiroTempoDuracaoM]   = useState(30);
+  const [totalContatos, setTotalContatos] = useState(335);
 
   useEffect(() => {
     axios.get<ConfigResponse>('/api/config').then(({ data }) => {
@@ -166,8 +171,16 @@ export default function Configuracoes() {
       setRespiroCada(b.respiroCada);
       setRespiroDurM(ms2m(b.respiroDuracao));
       setLimite(b.limitePorConta);
+      setRespiroTempoIntervaloM(ms2m(b.respiroTempoIntervalo));
+      setRespiroTempoDuracaoM(ms2m(b.respiroTempoDuracao));
       setDefaults(data.defaults.bot);
     }).finally(() => setLoading(false));
+
+    // Total real de contatos, pra estimativa não ficar com um número chumbado
+    // no código que fica cada vez mais desatualizado conforme a planilha muda.
+    axios.get<{ total: number }>('/api/stats').then(({ data }) => {
+      if (data.total > 0) setTotalContatos(data.total);
+    }).catch(() => {});
   }, []);
 
   function showToast(message: string, type: 'success' | 'error') {
@@ -191,6 +204,8 @@ export default function Configuracoes() {
           respiroCada,
           respiroDuracao: m2ms(respiroDurM),
           limitePorConta: limite,
+          respiroTempoIntervalo: m2ms(respiroTempoIntervaloM),
+          respiroTempoDuracao:   m2ms(respiroTempoDuracaoM),
         },
       });
       if (data.ok) showToast('Configurações salvas com sucesso!', 'success');
@@ -215,6 +230,8 @@ export default function Configuracoes() {
         setRespiroCada(defaults.respiroCada);
         setRespiroDurM(ms2m(defaults.respiroDuracao));
         setLimite(defaults.limitePorConta);
+        setRespiroTempoIntervaloM(ms2m(defaults.respiroTempoIntervalo));
+        setRespiroTempoDuracaoM(ms2m(defaults.respiroTempoDuracao));
       }
       showToast('Configurações restauradas para o padrão.', 'success');
     } catch {
@@ -232,6 +249,8 @@ export default function Configuracoes() {
     respiroCada: defaults.respiroCada,
     respiroDurM: ms2m(defaults.respiroDuracao),
     limite:      defaults.limitePorConta,
+    respiroTempoIntervaloM: ms2m(defaults.respiroTempoIntervalo),
+    respiroTempoDuracaoM:   ms2m(defaults.respiroTempoDuracao),
   } : null;
 
   if (loading) {
@@ -330,11 +349,11 @@ export default function Configuracoes() {
         <Section
           icon={Clock}
           title="Pausa Periódica"
-          description="Pausa curta aplicada periodicamente para simular comportamento humano."
+          description="Pausa curta aplicada periodicamente para simular comportamento humano. Os valores abaixo variam ±20% a cada disparo — não são exatos de propósito, pra não criar um padrão sempre idêntico."
         >
           <ConfigField
             label="Pausar a cada"
-            description="Número de mensagens enviadas antes de acionar a pausa periódica."
+            description="Número de mensagens enviadas antes de acionar a pausa periódica (± 20%)."
             unit="envios"
             value={pausaACada}
             min={5}
@@ -344,7 +363,7 @@ export default function Configuracoes() {
           />
           <ConfigField
             label="Duração da pausa"
-            description="Quanto tempo o bot fica inativo durante a pausa periódica."
+            description="Quanto tempo o bot fica inativo durante a pausa periódica (± 20%)."
             unit="min"
             value={pausaLongaM}
             min={1}
@@ -354,15 +373,15 @@ export default function Configuracoes() {
           />
         </Section>
 
-        {/* Respiro */}
+        {/* Respiro por quantidade */}
         <Section
           icon={Timer}
-          title="Respiro Longo"
-          description="Pausa extensa após um grande volume de envios — essencial para evitar banimento em listas grandes."
+          title="Respiro Longo (por quantidade)"
+          description="Pausa extensa após um grande volume de envios — essencial para evitar banimento em listas grandes. O tempo real até disparar varia conforme o delay configurado (uma campanha com delay maior demora mais pra atingir a contagem). Valores variam ±20% a cada disparo."
         >
           <ConfigField
             label="Respiro a cada"
-            description="Número de envios acumulados para acionar o respiro longo."
+            description="Número de envios acumulados para acionar o respiro longo (± 20%)."
             unit="envios"
             value={respiroCada}
             min={10}
@@ -372,7 +391,7 @@ export default function Configuracoes() {
           />
           <ConfigField
             label="Duração do respiro"
-            description="Tempo total de inatividade durante o respiro longo."
+            description="Tempo total de inatividade durante o respiro longo (± 20%)."
             unit="min"
             value={respiroDurM}
             min={10}
@@ -380,6 +399,34 @@ export default function Configuracoes() {
             defaultValue={defaultsS?.respiroDurM ?? 60}
             onChange={setRespiroDurM}
             warning={respiroDurM < 30 ? 'Respiros abaixo de 30 min podem não ser suficientes após grandes volumes.' : undefined}
+          />
+        </Section>
+
+        {/* Respiro por tempo de relógio */}
+        <Section
+          icon={Timer}
+          title="Respiro Longo (por tempo)"
+          description="Regra universal por relógio, independente do delay ou da quantidade enviada — o que disparar primeiro entre esta regra e o respiro por quantidade acima vale. Ex: padrão é parar por 30min a cada 1h corrida de envio."
+        >
+          <ConfigField
+            label="A cada"
+            description="Intervalo de tempo corrido entre um respiro e o próximo (± 20%)."
+            unit="min"
+            value={respiroTempoIntervaloM}
+            min={15}
+            max={480}
+            defaultValue={defaultsS?.respiroTempoIntervaloM ?? 60}
+            onChange={setRespiroTempoIntervaloM}
+          />
+          <ConfigField
+            label="Duração do respiro"
+            description="Quanto tempo o bot fica pausado quando esta regra dispara (± 20%)."
+            unit="min"
+            value={respiroTempoDuracaoM}
+            min={5}
+            max={240}
+            defaultValue={defaultsS?.respiroTempoDuracaoM ?? 30}
+            onChange={setRespiroTempoDuracaoM}
           />
         </Section>
 
@@ -404,16 +451,23 @@ export default function Configuracoes() {
 
         {/* Preview do tempo estimado */}
         <div className="bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Estimativa para 335 motoristas (1 conta)</h3>
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+            Estimativa para {totalContatos.toLocaleString('pt-BR')} contatos (1 conta)
+          </h3>
           <div className="grid grid-cols-3 gap-4">
             {(() => {
               const avgDelay = (delayMinS + delayMaxS) / 2;
-              const totalSem = 335 * avgDelay;
-              const pausasN  = Math.floor(335 / pausaACada);
+              const totalSem = totalContatos * avgDelay;
+              const pausasN  = Math.floor(totalContatos / pausaACada);
               const totalPausas = pausasN * pausaLongaM * 60;
-              const respirosN = Math.floor(335 / respiroCada);
-              const totalRespiro = respirosN * respiroDurM * 60;
-              const totalSecs = totalSem + totalPausas + totalRespiro;
+              const respirosQtdN = Math.floor(totalContatos / respiroCada);
+              const totalRespiroQtd = respirosQtdN * respiroDurM * 60;
+              // Respiro por tempo depende do tempo total já acumulado até aqui — não dá
+              // pra saber de antemão quantos vão caber sem calcular o resto primeiro.
+              const tempoBaseSecs = totalSem + totalPausas + totalRespiroQtd;
+              const respirosTempoN = Math.floor(tempoBaseSecs / (respiroTempoIntervaloM * 60));
+              const totalRespiroTempo = respirosTempoN * respiroTempoDuracaoM * 60;
+              const totalSecs = tempoBaseSecs + totalRespiroTempo;
               const horas = Math.floor(totalSecs / 3600);
               const mins  = Math.floor((totalSecs % 3600) / 60);
               return (
@@ -423,8 +477,8 @@ export default function Configuracoes() {
                     <div className="text-xs text-gray-500 mt-0.5">Média entre envios</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900">{respirosN}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Respiros previstos</div>
+                    <div className="text-2xl font-bold text-gray-900">{respirosQtdN + respirosTempoN}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Respiros previstos ({respirosQtdN} qtd + {respirosTempoN} tempo)</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: '#F56600' }}>

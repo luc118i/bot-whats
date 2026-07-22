@@ -9,7 +9,10 @@ const { criarCliente } = require('./client');
 const { montarMensagem, montarMensagemCampanha } = require('../utils/message');
 const config = require('../config');
 
-const { pausaACada, pausaLonga, respiroCada, respiroDuracao } = config.bot;
+const {
+  pausaACada, pausaLonga, respiroCada, respiroDuracao,
+  respiroTempoIntervalo, respiroTempoDuracao, limitePorConta,
+} = config.bot;
 
 /**
  * Aplica uma variação aleatória de ±20% em cima de um valor configurado.
@@ -64,6 +67,12 @@ async function processarConta(contaId, client, lista, media, modelosCampanha, de
   // com variação a cada disparo, para não repetir sempre a mesma contagem exata.
   let proximaPausa = comVariacao(pausaACada);
   let proximoRespiro = comVariacao(respiroCada);
+
+  // Respiro por tempo de relógio: regra universal independente da quantidade
+  // enviada. O respiro por contagem (proximoRespiro) demora mais ou menos tempo
+  // real dependendo do delay configurado em cada campanha — este aqui dispara
+  // sempre pelo relógio, não importa o delay usado.
+  let proximoRespiroTempo = Date.now() + comVariacao(respiroTempoIntervalo);
 
   for (let i = 0; i < limite; i++) {
     if (cancelToken?.cancelado) {
@@ -124,8 +133,22 @@ async function processarConta(contaId, client, lista, media, modelosCampanha, de
     resultados.push(resultado);
 
     const enviados = resultados.filter((r) => r.status === 'ENVIADO').length;
+
+    // Limite por execução: para esta conta após enviar N mensagens nesta
+    // rodada, mesmo com mais pendentes na lista — eles ficam pendentes pro
+    // próximo envio. 0 = sem limite.
+    if (limitePorConta > 0 && enviados >= limitePorConta) {
+      log(`${prefixo} 🛑 Limite de ${limitePorConta} envios por execução atingido. Encerrando esta rodada.\n`);
+      break;
+    }
+
     if (i < limite - 1) {
-      if (enviados > 0 && enviados >= proximoRespiro) {
+      if (Date.now() >= proximoRespiroTempo) {
+        const duracao = comVariacao(respiroTempoDuracao);
+        log(`${prefixo} 🕐 Respiro (por tempo) de ${(duracao / 60000).toFixed(0)} min...\n`);
+        await sleepCancelavel(duracao, cancelToken);
+        proximoRespiroTempo = Date.now() + comVariacao(respiroTempoIntervalo);
+      } else if (enviados > 0 && enviados >= proximoRespiro) {
         const duracao = comVariacao(respiroDuracao);
         log(`${prefixo} 🕐 Respiro de ${(duracao / 60000).toFixed(0)} min após ${enviados} envios...\n`);
         await sleepCancelavel(duracao, cancelToken);
