@@ -1,3 +1,13 @@
+> ## ⚠️ Repositório movido / desatualizado
+>
+> O desenvolvimento deste projeto continua em **`luc118i/Bot_whats`** (repositório privado).
+> Este repositório (`bot-whats`) foi congelado e **não recebe mais atualizações** — o
+> histórico e o código aqui refletem o estado até julho/2026.
+>
+> Se você precisa de acesso ao repositório atual, fale com o mantenedor.
+
+---
+
 # Catedral Bot — Painel de Campanhas WhatsApp
 
 Plataforma de disparo em massa via WhatsApp para a Viação Catedral: um dashboard web (React) para criar, configurar, pausar/retomar e acompanhar **campanhas** de comunicação com motoristas, e um backend Node.js que orquestra o envio de fato via `whatsapp-web.js`, com isolamento de progresso por campanha, controles anti-bloqueio configuráveis e relatórios (PDF/Excel) ao final.
